@@ -83,7 +83,6 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     final colors = Theme.of(context).colorScheme;
     final refuelProv = context.watch<RefuelProvider>();
     final expenseProv = context.watch<ExpenseProvider>();
-    final priceProv = context.watch<FuelPriceProvider>();
     final allRecords = refuelProv.records;
     final allExpenses = expenseProv.expenses;
     final now = DateTime.now();
