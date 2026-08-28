@@ -3,6 +3,12 @@
 BearFuel follows semantic versioning. Android build numbers increase for every
 published APK.
 
+## [0.2.10] - 2026-08-28
+
+- Fixed empty-backup validation, city-to-province mapping, CSV round trips, and vehicle-switch failure handling.
+- Added iOS external-link handling and improved weather chart data ranges.
+- Normalized CI formatting and analyzer checks.
+
 ## [0.2.9] - 2026-08-28
 
 - Restored permanent release signing and signature verification for split Android APKs.
