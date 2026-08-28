@@ -6,7 +6,12 @@ enum Environment {
 
 /// 全局应用环境与配置隔离类
 class AppConfig {
-  static const String versionName = '0.2.9';
+  // Release workflows inject this from pubspec.yaml; debug runs use a neutral
+  // value so the version is not maintained in two source files.
+  static const String versionName = String.fromEnvironment(
+    'APP_VERSION',
+    defaultValue: 'dev',
+  );
 
   static Environment _environment = Environment.development;
 

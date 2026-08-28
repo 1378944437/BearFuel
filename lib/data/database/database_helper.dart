@@ -58,7 +58,8 @@ class DatabaseHelper {
   /// 动态自愈：安全检查并补齐缺失列
   Future<void> _ensureTableSchema(Database db) async {
     final tables = await db.rawQuery(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='vehicles'");
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='vehicles'",
+    );
     if (tables.isEmpty) {
       await _onCreate(db, 1);
       return;
@@ -69,19 +70,23 @@ class DatabaseHelper {
 
     if (!colNames.contains('initial_mileage')) {
       await db.execute(
-          'ALTER TABLE vehicles ADD COLUMN initial_mileage REAL NOT NULL DEFAULT 0.0');
+        'ALTER TABLE vehicles ADD COLUMN initial_mileage REAL NOT NULL DEFAULT 0.0',
+      );
     }
     if (!colNames.contains('tank_capacity')) {
       await db.execute(
-          'ALTER TABLE vehicles ADD COLUMN tank_capacity REAL NOT NULL DEFAULT 50.0');
+        'ALTER TABLE vehicles ADD COLUMN tank_capacity REAL NOT NULL DEFAULT 50.0',
+      );
     }
     if (!colNames.contains('default_fuel_type')) {
       await db.execute(
-          "ALTER TABLE vehicles ADD COLUMN default_fuel_type TEXT NOT NULL DEFAULT '92# 汽油'");
+        "ALTER TABLE vehicles ADD COLUMN default_fuel_type TEXT NOT NULL DEFAULT '92# 汽油'",
+      );
     }
     if (!colNames.contains('is_default')) {
       await db.execute(
-          'ALTER TABLE vehicles ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0');
+        'ALTER TABLE vehicles ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0',
+      );
     }
     if (!colNames.contains('plate_number')) {
       await db.execute('ALTER TABLE vehicles ADD COLUMN plate_number TEXT');
@@ -94,7 +99,8 @@ class DatabaseHelper {
     }
 
     final weatherTables = await db.rawQuery(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='weather_snapshots'");
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='weather_snapshots'",
+    );
     if (weatherTables.isEmpty) {
       await _createWeatherSnapshotTable(db);
     }
@@ -164,9 +170,11 @@ class DatabaseHelper {
 
     // 创建必要索引以加速按车辆和时间排序查询
     await db.execute(
-        'CREATE INDEX idx_refuel_vehicle_date ON refuel_records (vehicle_id, refuel_date ASC, mileage ASC)');
+      'CREATE INDEX idx_refuel_vehicle_date ON refuel_records (vehicle_id, refuel_date ASC, mileage ASC)',
+    );
     await db.execute(
-        'CREATE INDEX idx_expense_vehicle_date ON expense_records (vehicle_id, expense_date DESC)');
+      'CREATE INDEX idx_expense_vehicle_date ON expense_records (vehicle_id, expense_date DESC)',
+    );
 
     // 写入默认示例车辆
     final defaultVehicleId = const Uuid().v4();
@@ -213,7 +221,8 @@ class DatabaseHelper {
       )
     ''');
     await db.execute(
-        'CREATE INDEX IF NOT EXISTS idx_weather_city_date ON weather_snapshots (city_key, snapshot_date ASC)');
+      'CREATE INDEX IF NOT EXISTS idx_weather_city_date ON weather_snapshots (city_key, snapshot_date ASC)',
+    );
   }
 
   // ==================== 车辆模块 CRUD ====================
@@ -222,8 +231,10 @@ class DatabaseHelper {
   Future<List<VehicleModel>> getVehicles() async {
     try {
       final db = await database;
-      final maps = await db.query('vehicles',
-          orderBy: 'is_default DESC, created_at ASC');
+      final maps = await db.query(
+        'vehicles',
+        orderBy: 'is_default DESC, created_at ASC',
+      );
       return maps.map((e) => VehicleModel.fromMap(e)).toList();
     } catch (e) {
       AppConfig.log('获取车辆列表失败: $e');
@@ -235,8 +246,11 @@ class DatabaseHelper {
   Future<VehicleModel?> getDefaultVehicle() async {
     try {
       final db = await database;
-      final maps =
-          await db.query('vehicles', where: 'is_default = 1', limit: 1);
+      final maps = await db.query(
+        'vehicles',
+        where: 'is_default = 1',
+        limit: 1,
+      );
       if (maps.isNotEmpty) {
         return VehicleModel.fromMap(maps.first);
       }
@@ -263,7 +277,8 @@ class DatabaseHelper {
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
       AppConfig.log(
-          '成功写入车辆数据 [${vehicle.name}], id: ${vehicle.id}, rowId: $rowId');
+        '成功写入车辆数据 [${vehicle.name}], id: ${vehicle.id}, rowId: $rowId',
+      );
       return rowId;
     } catch (e) {
       AppConfig.log('新增车辆初次写入异常，执行紧急自检修复: $e');
@@ -328,8 +343,9 @@ class DatabaseHelper {
     try {
       final db = await database;
       await db.rawUpdate('UPDATE vehicles SET is_default = 0');
-      await db.rawUpdate(
-          'UPDATE vehicles SET is_default = 1 WHERE id = ?', [vehicleId]);
+      await db.rawUpdate('UPDATE vehicles SET is_default = 1 WHERE id = ?', [
+        vehicleId,
+      ]);
     } catch (e) {
       AppConfig.log('设置默认车辆失败: $e');
       rethrow;
@@ -341,12 +357,21 @@ class DatabaseHelper {
     try {
       final db = await database;
       return await db.transaction((txn) async {
-        await txn.delete('refuel_records',
-            where: 'vehicle_id = ?', whereArgs: [vehicleId]);
-        await txn.delete('expense_records',
-            where: 'vehicle_id = ?', whereArgs: [vehicleId]);
-        return await txn
-            .delete('vehicles', where: 'id = ?', whereArgs: [vehicleId]);
+        await txn.delete(
+          'refuel_records',
+          where: 'vehicle_id = ?',
+          whereArgs: [vehicleId],
+        );
+        await txn.delete(
+          'expense_records',
+          where: 'vehicle_id = ?',
+          whereArgs: [vehicleId],
+        );
+        return await txn.delete(
+          'vehicles',
+          where: 'id = ?',
+          whereArgs: [vehicleId],
+        );
       });
     } catch (e) {
       AppConfig.log('删除车辆失败: $e');
@@ -411,8 +436,11 @@ class DatabaseHelper {
   Future<int> clearVehicleRefuelRecords(String vehicleId) async {
     try {
       final db = await database;
-      return await db.delete('refuel_records',
-          where: 'vehicle_id = ?', whereArgs: [vehicleId]);
+      return await db.delete(
+        'refuel_records',
+        where: 'vehicle_id = ?',
+        whereArgs: [vehicleId],
+      );
     } catch (e) {
       AppConfig.log('清空车辆加油记录失败: $e');
       rethrow;
@@ -448,7 +476,8 @@ class DatabaseHelper {
 
   /// 批量更新加油记录计算结果（用于重新计算后回写油耗）
   Future<void> batchUpdateRefuelCalculations(
-      List<RefuelRecordModel> records) async {
+    List<RefuelRecordModel> records,
+  ) async {
     try {
       final db = await database;
       final batch = db.batch();
@@ -518,7 +547,8 @@ class DatabaseHelper {
 
   /// 按城市和日期保存天气快照，同一天重复采集时覆盖旧值。
   Future<void> upsertWeatherSnapshots(
-      List<WeatherSnapshotModel> snapshots) async {
+    List<WeatherSnapshotModel> snapshots,
+  ) async {
     if (snapshots.isEmpty) return;
     final db = await database;
     final batch = db.batch();
@@ -606,6 +636,49 @@ class DatabaseHelper {
 
   /// 从 JSON 备份全量恢复数据（采用单事务安全替换）
   Future<bool> restoreFullBackupData(Map<String, dynamic> backupData) async {
+    bool hasRequiredRows(
+      dynamic value,
+      List<String> requiredKeys, {
+      bool allowEmpty = true,
+    }) {
+      if (value is! List || (!allowEmpty && value.isEmpty)) return false;
+      return value.every((row) {
+        if (row is! Map) return false;
+        return requiredKeys.every((key) => row[key] != null);
+      });
+    }
+
+    // Validate before opening the replacement transaction. An empty or
+    // malformed backup must never be allowed to clear the local database.
+    final isValid =
+        backupData['app'] == 'BearFuel' &&
+        hasRequiredRows(backupData['vehicles'], const [
+          'id',
+          'name',
+        ], allowEmpty: false) &&
+        hasRequiredRows(backupData['refuel_records'], const [
+          'id',
+          'vehicle_id',
+        ]) &&
+        (!backupData.containsKey('expense_records') ||
+            hasRequiredRows(backupData['expense_records'], const [
+              'id',
+              'vehicle_id',
+            ])) &&
+        (!backupData.containsKey('weather_snapshots') ||
+            hasRequiredRows(backupData['weather_snapshots'], const [
+              'id',
+              'city_key',
+              'city_name',
+              'snapshot_date',
+              'source',
+              'fetched_at',
+            ]));
+    if (!isValid) {
+      AppConfig.log('全量数据恢复已拒绝：备份格式无效或不包含车辆数据');
+      return false;
+    }
+
     try {
       final db = await database;
       await db.transaction((txn) async {
@@ -613,8 +686,9 @@ class DatabaseHelper {
         final refuels = (backupData['refuel_records'] as List<dynamic>?) ?? [];
         final expenses =
             (backupData['expense_records'] as List<dynamic>?) ?? [];
-        final includesWeatherSnapshots =
-            backupData.containsKey('weather_snapshots');
+        final includesWeatherSnapshots = backupData.containsKey(
+          'weather_snapshots',
+        );
         final weatherSnapshots =
             (backupData['weather_snapshots'] as List<dynamic>?) ?? [];
 
@@ -629,18 +703,27 @@ class DatabaseHelper {
         await txn.delete('weather_snapshots');
 
         for (final v in vehicles) {
-          await txn.insert('vehicles', Map<String, dynamic>.from(v),
-              conflictAlgorithm: ConflictAlgorithm.replace);
+          await txn.insert(
+            'vehicles',
+            Map<String, dynamic>.from(v),
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
         }
 
         for (final r in refuels) {
-          await txn.insert('refuel_records', Map<String, dynamic>.from(r),
-              conflictAlgorithm: ConflictAlgorithm.replace);
+          await txn.insert(
+            'refuel_records',
+            Map<String, dynamic>.from(r),
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
         }
 
         for (final e in expenses) {
-          await txn.insert('expense_records', Map<String, dynamic>.from(e),
-              conflictAlgorithm: ConflictAlgorithm.replace);
+          await txn.insert(
+            'expense_records',
+            Map<String, dynamic>.from(e),
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
         }
 
         if (includesWeatherSnapshots) {

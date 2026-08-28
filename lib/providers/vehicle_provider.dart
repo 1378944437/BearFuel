@@ -27,7 +27,8 @@ class VehicleProvider extends ChangeNotifier {
         _currentVehicle = _vehicles.first;
       }
       AppConfig.log(
-          '已成功加载 ${_vehicles.length} 辆车辆数据，当前选中: ${_currentVehicle?.name}');
+        '已成功加载 ${_vehicles.length} 辆车辆数据，当前选中: ${_currentVehicle?.name}',
+      );
     } catch (e) {
       AppConfig.log('加载车辆数据失败: $e');
     } finally {
@@ -37,8 +38,8 @@ class VehicleProvider extends ChangeNotifier {
   }
 
   /// 切换当前选中的激活车辆
-  Future<void> selectVehicle(VehicleModel vehicle) async {
-    if (_currentVehicle?.id == vehicle.id) return;
+  Future<bool> selectVehicle(VehicleModel vehicle) async {
+    if (_currentVehicle?.id == vehicle.id) return true;
 
     try {
       await _db.setDefaultVehicle(vehicle.id);
@@ -48,8 +49,10 @@ class VehicleProvider extends ChangeNotifier {
           .map((v) => v.copyWith(isDefault: v.id == vehicle.id))
           .toList();
       notifyListeners();
+      return true;
     } catch (e) {
       AppConfig.log('切换车辆失败: $e');
+      return false;
     }
   }
 

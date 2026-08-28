@@ -24,7 +24,7 @@ void main() async {
 
   // 1. 全局异常与闪退防护（捕获所有同步/异步未捕获异常，绝不闪退白屏）
   FlutterError.onError = (FlutterErrorDetails details) {
-    if (AppConfig.isDevelopment) FlutterError.presentError(details);
+    FlutterError.presentError(details);
     AppConfig.log('全局拦截 FlutterError: ${details.exceptionAsString()}');
   };
 

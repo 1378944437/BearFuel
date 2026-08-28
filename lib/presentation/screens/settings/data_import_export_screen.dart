@@ -44,25 +44,26 @@ class _DataImportExportScreenState extends State<DataImportExportScreen>
     super.dispose();
   }
 
-  /// 打开系统文件选择器，直接选取手机本地的 CSV / XLS / XLSX / TXT 原始文件
+  /// 打开系统文件选择器，直接选取手机本地的 CSV / XLS / TXT 原始文件
   Future<void> _pickCsvFile() async {
     final vehicleProv = context.read<VehicleProvider>();
     final currentVehicle = vehicleProv.currentVehicle;
 
     if (currentVehicle == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先选择一辆爱车以导入数据')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请先选择一辆爱车以导入数据')));
       return;
     }
 
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['csv', 'txt', 'xls', 'xlsx', 'tsv', 'json'],
+        allowedExtensions: ['csv', 'txt', 'xls', 'tsv', 'json'],
         withData: true,
       );
 
+      if (!mounted) return;
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
         setState(() {
@@ -76,11 +77,12 @@ class _DataImportExportScreenState extends State<DataImportExportScreen>
         } else if (file.path != null) {
           bytes = await File(file.path!).readAsBytes();
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('读取所选文件失败')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('读取所选文件失败')));
           return;
         }
+        if (!mounted) return;
 
         // 检查是否为全量 JSON 备份
         if (file.name.toLowerCase().endsWith('.json')) {
@@ -96,6 +98,7 @@ class _DataImportExportScreenState extends State<DataImportExportScreen>
         }
 
         final parsed = BearFuelImporter.parseBytes(bytes, currentVehicle.id);
+        if (!mounted) return;
         setState(() {
           _previewResult = parsed;
         });
@@ -105,7 +108,8 @@ class _DataImportExportScreenState extends State<DataImportExportScreen>
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
-                    '成功解析 $_selectedFileName，读取到 ${parsed.validCount} 条记录'),
+                  '成功解析 $_selectedFileName，读取到 ${parsed.validCount} 条记录',
+                ),
                 backgroundColor: Colors.green,
               ),
             );
@@ -137,12 +141,16 @@ class _DataImportExportScreenState extends State<DataImportExportScreen>
       return value is List && value.every((item) => item is Map);
     }
 
+    final hasVehicles = backupMap['vehicles'] is List &&
+        (backupMap['vehicles'] as List).isNotEmpty;
     final requiredKeys = ['vehicles', 'refuel_records'];
     final optionalKeys = ['expense_records', 'weather_snapshots'];
-    final hasInvalidData = [
-      ...requiredKeys,
-      ...optionalKeys.where(backupMap.containsKey),
-    ].any((key) => !validList(key));
+    final hasInvalidData = backupMap['app'] != 'BearFuel' ||
+        !hasVehicles ||
+        [
+          ...requiredKeys,
+          ...optionalKeys.where(backupMap.containsKey),
+        ].any((key) => !validList(key));
     if (hasInvalidData) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -159,14 +167,16 @@ class _DataImportExportScreenState extends State<DataImportExportScreen>
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('恢复全量账本备份'),
-        content: const Text('检测到 BearFuel 全量备份文件，导入将覆盖合并当前车辆与历史所有流水记录。确定继续吗？'),
+        content: const Text('检测到 BearFuel 全量备份文件，导入将替换当前车辆、流水和天气快照。确定继续吗？'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFF5A24)),
+              backgroundColor: const Color(0xFFFF5A24),
+            ),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('确认恢复'),
           ),
@@ -191,8 +201,9 @@ class _DataImportExportScreenState extends State<DataImportExportScreen>
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-                content: Text('全量账本与车辆数据已成功恢复！'),
-                backgroundColor: Colors.green),
+              content: Text('全量账本与车辆数据已成功恢复！'),
+              backgroundColor: Colors.green,
+            ),
           );
         }
       } else if (mounted) {
@@ -231,7 +242,9 @@ class _DataImportExportScreenState extends State<DataImportExportScreen>
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-                content: Text('数据写入失败，请检查数据完整性'), backgroundColor: Colors.red),
+              content: Text('数据写入失败，请检查数据完整性'),
+              backgroundColor: Colors.red,
+            ),
           );
         }
       }
@@ -292,8 +305,11 @@ class _DataImportExportScreenState extends State<DataImportExportScreen>
       final file = File(filePath);
       await file.writeAsString(jsonStr, encoding: utf8);
 
-      final xfile =
-          XFile(filePath, mimeType: 'application/json', name: fileName);
+      final xfile = XFile(
+        filePath,
+        mimeType: 'application/json',
+        name: fileName,
+      );
       await Share.shareXFiles(
         [xfile],
         subject: 'BearFuel 全量账本数据库备份',
@@ -325,20 +341,19 @@ class _DataImportExportScreenState extends State<DataImportExportScreen>
           unselectedLabelColor: colors.onSurfaceVariant,
           tabs: const [
             Tab(
-                icon: Icon(AppIcons.file_download_outlined, size: 20),
-                text: '导入数据'),
+              icon: Icon(AppIcons.file_download_outlined, size: 20),
+              text: '导入数据',
+            ),
             Tab(
-                icon: Icon(AppIcons.file_upload_outlined, size: 20),
-                text: '导出与备份'),
+              icon: Icon(AppIcons.file_upload_outlined, size: 20),
+              text: '导出与备份',
+            ),
           ],
         ),
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [
-          _buildImportView(carName),
-          _buildExportView(carName),
-        ],
+        children: [_buildImportView(carName), _buildExportView(carName)],
       ),
     );
   }
@@ -356,13 +371,18 @@ class _DataImportExportScreenState extends State<DataImportExportScreen>
             children: [
               Row(
                 children: [
-                  const Icon(AppIcons.directions_car,
-                      color: Color(0xFFFF5A24), size: 20),
+                  const Icon(
+                    AppIcons.directions_car,
+                    color: Color(0xFFFF5A24),
+                    size: 20,
+                  ),
                   const SizedBox(width: 8),
                   Text(
                     '当前目标爱车: $carName',
                     style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 15),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15,
+                    ),
                   ),
                 ],
               ),
@@ -382,8 +402,10 @@ class _DataImportExportScreenState extends State<DataImportExportScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('选择本地表格或备份文件',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              const Text(
+                '选择本地表格或备份文件',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              ),
               const SizedBox(height: 10),
               ElevatedButton.icon(
                 onPressed: _pickCsvFile,
@@ -400,9 +422,10 @@ class _DataImportExportScreenState extends State<DataImportExportScreen>
                 Text(
                   '已选文件: $_selectedFileName (${(_selectedFileSize ?? 0) ~/ 1024} KB)',
                   style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.green,
-                      fontWeight: FontWeight.w600),
+                    fontSize: 12,
+                    color: Colors.green,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ],
             ],
@@ -415,8 +438,10 @@ class _DataImportExportScreenState extends State<DataImportExportScreen>
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('覆盖导入目标车辆已有记录'),
-          subtitle: const Text('开启后将清空当前爱车原先记录，关闭则追加在末尾',
-              style: TextStyle(fontSize: 12)),
+          subtitle: const Text(
+            '开启后将清空当前爱车原先记录，关闭则追加在末尾',
+            style: TextStyle(fontSize: 12),
+          ),
           activeThumbColor: const Color(0xFFFF5A24),
           value: _overwriteExisting,
           onChanged: (val) => setState(() => _overwriteExisting = val),
@@ -477,13 +502,17 @@ class _DataImportExportScreenState extends State<DataImportExportScreen>
                   const SizedBox(height: 6),
                   Text(
                     '时间跨度: ${_previewResult!.parsedRecords.first.refuelDate.toString().split(" ")[0]} ~ ${_previewResult!.parsedRecords.last.refuelDate.toString().split(" ")[0]}',
-                    style:
-                        TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: colors.onSurfaceVariant,
+                    ),
                   ),
                   Text(
                     '里程跨度: ${_previewResult!.parsedRecords.first.mileage} km ~ ${_previewResult!.parsedRecords.last.mileage} km',
-                    style:
-                        TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: colors.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ],
@@ -509,9 +538,14 @@ class _DataImportExportScreenState extends State<DataImportExportScreen>
                   width: 20,
                   height: 20,
                   child: CircularProgressIndicator(
-                      color: Colors.white, strokeWidth: 2))
-              : const Text('确认一键批量入库',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                    color: Colors.white,
+                    strokeWidth: 2,
+                  ),
+                )
+              : const Text(
+                  '确认一键批量入库',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                ),
         ),
       ],
     );
@@ -536,9 +570,10 @@ class _DataImportExportScreenState extends State<DataImportExportScreen>
                 children: [
                   Icon(AppIcons.shield_outlined, color: Colors.green, size: 20),
                   SizedBox(width: 8),
-                  Text('全量账本数据安全备份 (推荐)',
-                      style:
-                          TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  Text(
+                    '全量账本数据安全备份 (推荐)',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                  ),
                 ],
               ),
               const SizedBox(height: 6),
@@ -571,8 +606,10 @@ class _DataImportExportScreenState extends State<DataImportExportScreen>
             children: [
               Text(
                 '导出当前爱车 ($carName) 为标准 CSV',
-                style:
-                    const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                ),
               ),
               const SizedBox(height: 6),
               Text(
@@ -584,8 +621,10 @@ class _DataImportExportScreenState extends State<DataImportExportScreen>
                 Container(
                   padding: const EdgeInsets.all(20),
                   alignment: Alignment.center,
-                  child: Text('当前爱车暂无加油记录可供导出',
-                      style: TextStyle(color: colors.onSurfaceVariant)),
+                  child: Text(
+                    '当前爱车暂无加油记录可供导出',
+                    style: TextStyle(color: colors.onSurfaceVariant),
+                  ),
                 )
               else ...[
                 ElevatedButton.icon(

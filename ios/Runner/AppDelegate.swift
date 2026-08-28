@@ -12,5 +12,25 @@ import UIKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+
+    let channel = FlutterMethodChannel(
+      name: "bearfuel/external_url",
+      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+    )
+    channel.setMethodCallHandler { call, result in
+      guard call.method == "openUrl",
+            let arguments = call.arguments as? [String: Any],
+            let rawUrl = arguments["url"] as? String,
+            let url = URL(string: rawUrl),
+            let scheme = url.scheme?.lowercased(),
+            scheme == "http" || scheme == "https" else {
+        result(false)
+        return
+      }
+
+      UIApplication.shared.open(url, options: [:]) { opened in
+        result(opened)
+      }
+    }
   }
 }

@@ -1235,10 +1235,10 @@ class _SlidableRefuelItemCardState extends State<_SlidableRefuelItemCard>
     super.initState();
     _controller = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 200));
-    _animation = Tween<double>(begin: 0.0, end: 0.0).animate(_controller)
-      ..addListener(() {
-        setState(() => _dragOffset = _animation.value);
-      });
+    _animation = Tween<double>(begin: 0.0, end: 0.0).animate(_controller);
+    _controller.addListener(() {
+      if (mounted) setState(() => _dragOffset = _animation.value);
+    });
   }
 
   @override

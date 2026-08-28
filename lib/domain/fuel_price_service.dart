@@ -21,14 +21,14 @@ class ProvinceFuelPrice {
   });
 
   ProvinceFuelPrice.unavailable(String province)
-      : province = province,
-        gas92 = 0,
-        gas95 = 0,
-        gas98 = 0,
-        diesel0 = 0,
-        lastChangeAmount = 0,
-        lastChangeDate = DateTime(1970),
-        isAvailable = false;
+    : province = province,
+      gas92 = 0,
+      gas95 = 0,
+      gas98 = 0,
+      diesel0 = 0,
+      lastChangeAmount = 0,
+      lastChangeDate = DateTime(1970),
+      isAvailable = false;
 }
 
 class AdjustmentForecast {
@@ -122,12 +122,16 @@ class FuelPriceService {
     '郑州': '河南',
     '长沙': '湖南',
     '济南': '山东',
+    '青岛': '山东',
     '沈阳': '辽宁',
+    '长春': '吉林',
     '大连': '辽宁',
+    '哈尔滨': '黑龙江',
     '福州': '福建',
     '厦门': '福建',
     '合肥': '安徽',
     '南昌': '江西',
+    '南宁': '广西',
     '昆明': '云南',
     '贵阳': '贵州',
     '海口': '海南',
@@ -144,8 +148,10 @@ class FuelPriceService {
   static List<String> getAllProvinces() => _supportedProvinces;
 
   static String cityToProvince(String provinceOrCity) {
-    final normalized =
-        provinceOrCity.trim().replaceFirst(RegExp(r'(自治区|自治州|地区|省|市)$'), '');
+    final normalized = provinceOrCity.trim().replaceFirst(
+      RegExp(r'(自治区|自治州|地区|省|市)$'),
+      '',
+    );
     if (_supportedProvinces.contains(normalized)) return normalized;
     return _cityProvince[normalized] ?? normalized;
   }

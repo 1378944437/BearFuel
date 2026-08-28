@@ -22,8 +22,9 @@ class VehicleManagementScreen extends StatelessWidget {
   void _showVehicleDialog(BuildContext context, {VehicleModel? editVehicle}) {
     final formKey = GlobalKey<FormState>();
     final nameCtrl = TextEditingController(text: editVehicle?.name ?? '');
-    final plateCtrl =
-        TextEditingController(text: editVehicle?.plateNumber ?? '');
+    final plateCtrl = TextEditingController(
+      text: editVehicle?.plateNumber ?? '',
+    );
     final brandCtrl = TextEditingController(text: editVehicle?.brand ?? '');
     final modelCtrl = TextEditingController(text: editVehicle?.model ?? '');
     final capacityCtrl = TextEditingController(
@@ -46,8 +47,9 @@ class VehicleManagementScreen extends StatelessWidget {
           builder: (modalCtx, setModalState) {
             return Material(
               color: bgColor,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(20)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(20),
+              ),
               clipBehavior: Clip.antiAlias,
               child: Padding(
                 padding: EdgeInsets.only(
@@ -69,7 +71,9 @@ class VehicleManagementScreen extends StatelessWidget {
                             Text(
                               editVehicle != null ? '编辑车辆档案' : '添加爱车',
                               style: const TextStyle(
-                                  fontSize: 18, fontWeight: FontWeight.bold),
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                             IconButton(
                               icon: const Icon(AppIcons.close),
@@ -106,8 +110,9 @@ class VehicleManagementScreen extends StatelessWidget {
                           decoration: const InputDecoration(
                             labelText: '车辆品牌/车型（选填）',
                             hintText: '如：丰田卡罗拉 / 大众高尔夫',
-                            prefixIcon:
-                                Icon(AppIcons.branding_watermark_outlined),
+                            prefixIcon: Icon(
+                              AppIcons.branding_watermark_outlined,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -119,17 +124,21 @@ class VehicleManagementScreen extends StatelessWidget {
                                 controller: capacityCtrl,
                                 keyboardType:
                                     const TextInputType.numberWithOptions(
-                                        decimal: true),
+                                      decimal: true,
+                                    ),
                                 inputFormatters: [AppInputFormatters.decimal2],
                                 decoration: const InputDecoration(
                                   labelText: '油箱容积 (L) *',
                                   hintText: '50.0',
                                   suffixText: 'L',
-                                  prefixIcon:
-                                      Icon(AppIcons.local_gas_station_outlined),
+                                  prefixIcon: Icon(
+                                    AppIcons.local_gas_station_outlined,
+                                  ),
                                 ),
-                                validator: (v) => Validators.positiveNumber(v,
-                                    fieldName: '油箱容积'),
+                                validator: (v) => Validators.positiveNumber(
+                                  v,
+                                  fieldName: '油箱容积',
+                                ),
                               ),
                             ),
                             const SizedBox(width: 12),
@@ -138,7 +147,8 @@ class VehicleManagementScreen extends StatelessWidget {
                                 controller: mileageCtrl,
                                 keyboardType:
                                     const TextInputType.numberWithOptions(
-                                        decimal: true),
+                                      decimal: true,
+                                    ),
                                 inputFormatters: [AppInputFormatters.decimal2],
                                 decoration: const InputDecoration(
                                   labelText: '初始里程 (km) *',
@@ -147,8 +157,9 @@ class VehicleManagementScreen extends StatelessWidget {
                                   prefixIcon: Icon(AppIcons.speed),
                                 ),
                                 validator: (v) => Validators.nonNegativeNumber(
-                                    v,
-                                    fieldName: '初始里程'),
+                                  v,
+                                  fieldName: '初始里程',
+                                ),
                               ),
                             ),
                           ],
@@ -157,19 +168,24 @@ class VehicleManagementScreen extends StatelessWidget {
                         const Text(
                           '推荐燃油标号',
                           style: TextStyle(
-                              fontSize: 13, fontWeight: FontWeight.bold),
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         const SizedBox(height: 6),
                         Wrap(
                           spacing: 8,
                           children: FuelType.allTypes.map((fuel) {
                             return ChoiceChip(
-                              label: Text(fuel,
-                                  style: const TextStyle(fontSize: 12)),
+                              label: Text(
+                                fuel,
+                                style: const TextStyle(fontSize: 12),
+                              ),
                               selected: selectedFuel == fuel,
                               showCheckmark: false,
-                              selectedColor: const Color(0xFFFF5A24)
-                                  .withValues(alpha: 0.18),
+                              selectedColor: const Color(
+                                0xFFFF5A24,
+                              ).withValues(alpha: 0.18),
                               labelStyle: TextStyle(
                                 color: selectedFuel == fuel
                                     ? const Color(0xFFFF5A24)
@@ -205,12 +221,13 @@ class VehicleManagementScreen extends StatelessWidget {
                                   : modelCtrl.text.trim(),
                               tankCapacity:
                                   double.tryParse(capacityCtrl.text.trim()) ??
-                                      50.0,
+                                  50.0,
                               initialMileage:
                                   double.tryParse(mileageCtrl.text.trim()) ??
-                                      0.0,
+                                  0.0,
                               defaultFuelType: selectedFuel,
-                              isDefault: editVehicle?.isDefault ??
+                              isDefault:
+                                  editVehicle?.isDefault ??
                                   (vehicleProv.vehicles.isEmpty),
                             );
 
@@ -218,8 +235,9 @@ class VehicleManagementScreen extends StatelessWidget {
                             String? errorMsg;
                             try {
                               if (editVehicle != null) {
-                                success =
-                                    await vehicleProv.updateVehicle(vehicle);
+                                success = await vehicleProv.updateVehicle(
+                                  vehicle,
+                                );
                               } else {
                                 success = await vehicleProv.addVehicle(vehicle);
                                 // 自动激活新添加的车辆
@@ -228,9 +246,9 @@ class VehicleManagementScreen extends StatelessWidget {
                                         vehicle.isDefault)) {
                                   await vehicleProv.selectVehicle(vehicle);
                                   if (context.mounted) {
-                                    context
-                                        .read<RefuelProvider>()
-                                        .loadRecords(vehicle.id);
+                                    context.read<RefuelProvider>().loadRecords(
+                                      vehicle.id,
+                                    );
                                     context
                                         .read<ExpenseProvider>()
                                         .loadExpenses(vehicle.id);
@@ -250,12 +268,13 @@ class VehicleManagementScreen extends StatelessWidget {
                                   content: Text(
                                     success
                                         ? (editVehicle != null
-                                            ? '已修改车辆“${vehicle.name}”档案'
-                                            : '已成功添加爱车“${vehicle.name}”！')
+                                              ? '已修改车辆“${vehicle.name}”档案'
+                                              : '已成功添加爱车“${vehicle.name}”！')
                                         : '保存失败: ${errorMsg ?? "数据存取异常，请重试"}',
                                   ),
-                                  backgroundColor:
-                                      success ? Colors.green : Colors.red,
+                                  backgroundColor: success
+                                      ? Colors.green
+                                      : Colors.red,
                                 ),
                               );
                             }
@@ -303,14 +322,21 @@ class VehicleManagementScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('添加新爱车',
-                        style: TextStyle(
-                            color: colors.onSurface,
-                            fontWeight: FontWeight.bold)),
+                    Text(
+                      '添加新爱车',
+                      style: TextStyle(
+                        color: colors.onSurface,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                     const SizedBox(height: 2),
-                    Text('建立车辆档案，开始记录油耗与用车成本',
-                        style: TextStyle(
-                            fontSize: 12, color: colors.onSurfaceVariant)),
+                    Text(
+                      '建立车辆档案，开始记录油耗与用车成本',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -331,10 +357,7 @@ class VehicleManagementScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const AppPageTitle(
-          title: '爱车档案',
-          subtitle: '车辆资料与数据管理',
-        ),
+        title: const AppPageTitle(title: '爱车档案', subtitle: '车辆资料与数据管理'),
         actions: [
           IconButton(
             icon: const Icon(AppIcons.settings_outlined),
@@ -344,7 +367,8 @@ class VehicleManagementScreen extends StatelessWidget {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                    builder: (_) => const ServiceSettingsScreen()),
+                  builder: (_) => const ServiceSettingsScreen(),
+                ),
               );
             },
           ),
@@ -355,11 +379,16 @@ class VehicleManagementScreen extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(AppIcons.directions_car,
-                      size: 64, color: colors.onSurfaceVariant),
+                  Icon(
+                    AppIcons.directions_car,
+                    size: 64,
+                    color: colors.onSurfaceVariant,
+                  ),
                   const SizedBox(height: 16),
-                  Text('暂无车辆档案，请先添加一辆爱车',
-                      style: TextStyle(color: colors.onSurfaceVariant)),
+                  Text(
+                    '暂无车辆档案，请先添加一辆爱车',
+                    style: TextStyle(color: colors.onSurfaceVariant),
+                  ),
                   const SizedBox(height: 16),
                   SizedBox(
                     width: MediaQuery.of(context).size.width - 48,
@@ -370,7 +399,8 @@ class VehicleManagementScreen extends StatelessWidget {
             )
           : ListView.builder(
               physics: const BouncingScrollPhysics(
-                  parent: AlwaysScrollableScrollPhysics()),
+                parent: AlwaysScrollableScrollPhysics(),
+              ),
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 88),
               itemCount: vehicles.length + 1,
               itemBuilder: (context, index) {
@@ -397,13 +427,20 @@ class VehicleManagementScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                     onTap: () async {
                       HapticFeedback.selectionClick();
-                      await vehicleProv.selectVehicle(v);
+                      final success = await vehicleProv.selectVehicle(v);
                       // 切换关联数据
                       if (context.mounted) {
-                        context.read<RefuelProvider>().loadRecords(v.id);
-                        context.read<ExpenseProvider>().loadExpenses(v.id);
+                        if (success) {
+                          context.read<RefuelProvider>().loadRecords(v.id);
+                          context.read<ExpenseProvider>().loadExpenses(v.id);
+                        }
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('已切换当前车辆为: ${v.name}')),
+                          SnackBar(
+                            content: Text(
+                              success ? '已切换当前车辆为: ${v.name}' : '切换车辆失败，请稍后重试',
+                            ),
+                            backgroundColor: success ? null : Colors.red,
+                          ),
                         );
                       }
                     },
@@ -436,7 +473,9 @@ class VehicleManagementScreen extends StatelessWidget {
                               if (isSelected)
                                 Container(
                                   padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 3),
+                                    horizontal: 8,
+                                    vertical: 3,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: const Color(0xFFFF5A24),
                                     borderRadius: BorderRadius.circular(12),
@@ -444,7 +483,9 @@ class VehicleManagementScreen extends StatelessWidget {
                                   child: const Text(
                                     '当前激活',
                                     style: TextStyle(
-                                        color: Colors.white, fontSize: 11),
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                    ),
                                   ),
                                 ),
                             ],
@@ -462,15 +503,17 @@ class VehicleManagementScreen extends StatelessWidget {
                                     Text(
                                       '车牌: ${v.plateNumber != null && v.plateNumber!.isNotEmpty ? v.plateNumber! : "未录入"}',
                                       style: TextStyle(
-                                          color: colors.onSurfaceVariant,
-                                          fontSize: 13),
+                                        color: colors.onSurfaceVariant,
+                                        fontSize: 13,
+                                      ),
                                     ),
                                     const SizedBox(height: 6),
                                     Text(
                                       '油箱: ${v.tankCapacity} L',
                                       style: TextStyle(
-                                          color: colors.onSurfaceVariant,
-                                          fontSize: 13),
+                                        color: colors.onSurfaceVariant,
+                                        fontSize: 13,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -485,15 +528,17 @@ class VehicleManagementScreen extends StatelessWidget {
                                     Text(
                                       '油品标号: ${v.defaultFuelType}',
                                       style: TextStyle(
-                                          color: colors.onSurfaceVariant,
-                                          fontSize: 13),
+                                        color: colors.onSurfaceVariant,
+                                        fontSize: 13,
+                                      ),
                                     ),
                                     const SizedBox(height: 6),
                                     Text(
                                       '初始里程: ${v.initialMileage} km',
                                       style: TextStyle(
-                                          color: colors.onSurfaceVariant,
-                                          fontSize: 13),
+                                        color: colors.onSurfaceVariant,
+                                        fontSize: 13,
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -515,10 +560,15 @@ class VehicleManagementScreen extends StatelessWidget {
                               if (vehicles.length > 1) ...[
                                 const SizedBox(width: 8),
                                 TextButton.icon(
-                                  icon: const Icon(AppIcons.delete_outline,
-                                      size: 16, color: Colors.red),
-                                  label: const Text('删除',
-                                      style: TextStyle(color: Colors.red)),
+                                  icon: const Icon(
+                                    AppIcons.delete_outline,
+                                    size: 16,
+                                    color: Colors.red,
+                                  ),
+                                  label: const Text(
+                                    '删除',
+                                    style: TextStyle(color: Colors.red),
+                                  ),
                                   onPressed: () async {
                                     HapticFeedback.lightImpact();
                                     final confirm = await showDialog<bool>(
@@ -526,7 +576,8 @@ class VehicleManagementScreen extends StatelessWidget {
                                       builder: (ctx) => AlertDialog(
                                         title: const Text('确认删除车辆？'),
                                         content: Text(
-                                            '删除“${v.name}”将同时清空该车辆名下的所有加油流水与费用明细记录，此操作无法撤销！'),
+                                          '删除“${v.name}”将同时清空该车辆名下的所有加油流水与费用明细记录，此操作无法撤销！',
+                                        ),
                                         actions: [
                                           TextButton(
                                             onPressed: () =>
@@ -535,7 +586,8 @@ class VehicleManagementScreen extends StatelessWidget {
                                           ),
                                           ElevatedButton(
                                             style: ElevatedButton.styleFrom(
-                                                backgroundColor: Colors.red),
+                                              backgroundColor: Colors.red,
+                                            ),
                                             onPressed: () =>
                                                 Navigator.pop(ctx, true),
                                             child: const Text('确认彻底删除'),
@@ -547,9 +599,9 @@ class VehicleManagementScreen extends StatelessWidget {
                                     if (confirm == true && context.mounted) {
                                       final wasCurrent =
                                           vehicleProv.currentVehicle?.id ==
-                                              v.id;
-                                      final deleted =
-                                          await vehicleProv.deleteVehicle(v.id);
+                                          v.id;
+                                      final deleted = await vehicleProv
+                                          .deleteVehicle(v.id);
                                       if (deleted &&
                                           wasCurrent &&
                                           context.mounted &&
@@ -561,10 +613,12 @@ class VehicleManagementScreen extends StatelessWidget {
                                             .loadRecords(next.id);
                                         await context
                                             .read<ExpenseProvider>()
-                                            .loadExpenses(next.id,
-                                                currentMaxMileage: context
-                                                    .read<RefuelProvider>()
-                                                    .latestMileage);
+                                            .loadExpenses(
+                                              next.id,
+                                              currentMaxMileage: context
+                                                  .read<RefuelProvider>()
+                                                  .latestMileage,
+                                            );
                                       }
                                     }
                                   },

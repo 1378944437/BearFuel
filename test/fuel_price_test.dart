@@ -23,6 +23,10 @@ void main() {
       expect(FuelPriceService.cityToProvince('荆门'), '湖北');
       expect(FuelPriceService.cityToProvince('深圳'), '广东');
       expect(FuelPriceService.cityToProvince('北京市'), '北京');
+      expect(FuelPriceService.cityToProvince('长春'), '吉林');
+      expect(FuelPriceService.cityToProvince('哈尔滨'), '黑龙江');
+      expect(FuelPriceService.cityToProvince('青岛'), '山东');
+      expect(FuelPriceService.cityToProvince('南宁'), '广西');
     });
 
     test('没有内置历史和预测示例数据', () {

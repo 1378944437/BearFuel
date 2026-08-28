@@ -24,20 +24,20 @@ class ImportResult {
   });
 }
 
-/// 小熊油耗全格式数据导入与导出引擎（全面支持 .csv, .xls, .xlsx, .tsv, .txt）
+/// 小熊油耗数据导入与导出引擎（支持 .csv, .xls, .tsv, .txt）
 class BearFuelImporter {
-  /// 模版示例数据（用于用户直接测试体验）
-  static const String sampleCsvData = '''时间,当前里程,加油量,单价,金额,是否加满,是否漏记,油品,加油站,备注
-2026-01-05 08:30,10000,48.5,8.12,393.82,是,否,92# 汽油,中石化朝阳路加油站,首充加满基准
-2026-01-18 17:45,10620,44.2,8.15,360.23,是,否,92# 汽油,中石油北苑站,上下班通勤
-2026-02-02 12:10,10950,20.0,8.20,164.00,否,否,92# 汽油,壳牌立汤路站,临时补油
-2026-02-15 09:20,11380,32.8,8.25,270.60,是,否,92# 汽油,中石化望京站,春节高速自驾
-2026-03-01 19:00,11900,41.0,8.30,340.30,是,否,92# 汽油,中石化朝阳路加油站,常态用车''';
-
   /// 解析从手机本地文件读取的原始字节流（智能识别 XLS 格式与 UTF-8 / GBK 编码文本）
   static ImportResult parseBytes(List<int> bytes, String vehicleId) {
     if (bytes.isEmpty) {
       return ImportResult(success: false, errorMessage: '选取的导入文件为空');
+    }
+
+    // XLSX is a ZIP container and is not parsed by this Dart-only importer.
+    if (bytes.length >= 2 && bytes[0] == 0x50 && bytes[1] == 0x4B) {
+      return ImportResult(
+        success: false,
+        errorMessage: '暂不支持 XLSX 文件，请另存为 CSV 或 XLS 后再导入',
+      );
     }
 
     // 1. 检查是否为 Microsoft Excel 二进制文件 (.xls / CFB BIFF8 格式)
@@ -82,13 +82,12 @@ class BearFuelImporter {
     }
 
     try {
-      final lines = csvContent
+      final content = csvContent
           .replaceAll('\r\n', '\n')
-          .replaceAll('\r', '\n')
-          .split('\n')
-          .map((e) => e.trim())
-          .where((e) => e.isNotEmpty)
-          .toList();
+          .replaceAll('\r', '\n');
+      final lines = _splitCsvRecords(
+        content,
+      ).where((e) => e.trim().isNotEmpty).toList();
 
       if (lines.isEmpty) {
         return ImportResult(success: false, errorMessage: '未读取到有效行数据');
@@ -196,11 +195,13 @@ class BearFuelImporter {
         double totalPrice = _parseNumber(totalStr) ?? 0.0;
 
         if (totalPrice <= 0 && unitPrice > 0) {
-          totalPrice =
-              double.parse((fuelAmount * unitPrice).toStringAsFixed(2));
+          totalPrice = double.parse(
+            (fuelAmount * unitPrice).toStringAsFixed(2),
+          );
         } else if (unitPrice <= 0 && totalPrice > 0) {
-          unitPrice =
-              double.parse((totalPrice / fuelAmount).toStringAsFixed(2));
+          unitPrice = double.parse(
+            (totalPrice / fuelAmount).toStringAsFixed(2),
+          );
         } else if (unitPrice <= 0 && totalPrice <= 0) {
           // 缺少价格时不能使用固定示例值，否则会把导入数据伪装成真实账目。
           skipped++;
@@ -212,21 +213,23 @@ class BearFuelImporter {
         final isFullTank = (fullStr == null || fullStr.isEmpty)
             ? true
             : (fullStr.contains('是') ||
-                fullStr == '1' ||
-                fullStr.contains('满') ||
-                fullStr == 'true' ||
-                fullStr == 'yes');
+                  fullStr == '1' ||
+                  fullStr.contains('满') ||
+                  fullStr == 'true' ||
+                  fullStr == 'yes');
 
         // 是否漏记
-        final forgotStr =
-            _getColValue(row, colMap['isForgotPrevious'])?.toLowerCase();
+        final forgotStr = _getColValue(
+          row,
+          colMap['isForgotPrevious'],
+        )?.toLowerCase();
         final isForgotPrevious = (forgotStr == null || forgotStr.isEmpty)
             ? false
             : (forgotStr.contains('是') ||
-                forgotStr == '1' ||
-                forgotStr.contains('漏') ||
-                forgotStr == 'true' ||
-                forgotStr == 'yes');
+                  forgotStr == '1' ||
+                  forgotStr.contains('漏') ||
+                  forgotStr == 'true' ||
+                  forgotStr == 'yes');
 
         // 油品
         var rawFuel = _getColValue(row, colMap['fuelType']) ?? FuelType.gas92;
@@ -255,7 +258,8 @@ class BearFuelImporter {
             unitPrice: unitPrice,
             totalPrice: totalPrice,
             fuelType: rawFuel,
-            gasStation: (gasStation != null &&
+            gasStation:
+                (gasStation != null &&
                     gasStation.isNotEmpty &&
                     gasStation != 'nan')
                 ? gasStation
@@ -303,7 +307,8 @@ class BearFuelImporter {
       final note = _escapeCsv(r.note ?? '');
 
       buffer.writeln(
-          '$date,$mileage,$amount,$price,$total,$isFull,$isForgot,$fuel,$station,$consumption,$costKm,$note');
+        '$date,$mileage,$amount,$price,$total,$isFull,$isForgot,$fuel,$station,$consumption,$costKm,$note',
+      );
     }
 
     return buffer.toString();
@@ -444,24 +449,74 @@ class BearFuelImporter {
     return ',';
   }
 
-  /// 切分 CSV 行
-  static List<String> _splitCsvLine(String line, {String delimiter = ','}) {
-    final List<String> result = [];
+  /// 按 RFC 4180 规则切分记录，允许引号字段跨越多行。
+  static List<String> _splitCsvRecords(String content) {
+    final records = <String>[];
     final sb = StringBuffer();
-    bool insideQuote = false;
+    var insideQuote = false;
 
-    for (int i = 0; i < line.length; i++) {
-      final char = line[i];
+    for (var i = 0; i < content.length; i++) {
+      final char = content[i];
       if (char == '"') {
-        insideQuote = !insideQuote;
-      } else if (char == delimiter && !insideQuote) {
-        result.add(sb.toString().trim());
+        if (insideQuote && i + 1 < content.length && content[i + 1] == '"') {
+          sb.write('""');
+          i++;
+        } else {
+          insideQuote = !insideQuote;
+          sb.write(char);
+        }
+      } else if (char == '\n' && !insideQuote) {
+        records.add(sb.toString());
         sb.clear();
       } else {
         sb.write(char);
       }
     }
-    result.add(sb.toString().trim());
+    if (sb.length > 0) records.add(sb.toString());
+    return records;
+  }
+
+  /// 切分 CSV 行并还原引号字段中的转义双引号。
+  static List<String> _splitCsvLine(String line, {String delimiter = ','}) {
+    final result = <String>[];
+    final sb = StringBuffer();
+    var insideQuote = false;
+    var fieldStarted = false;
+    var fieldWasQuoted = false;
+
+    void addField() {
+      result.add(fieldWasQuoted ? sb.toString() : sb.toString().trim());
+      sb.clear();
+      fieldStarted = false;
+      fieldWasQuoted = false;
+    }
+
+    for (var i = 0; i < line.length; i++) {
+      final char = line[i];
+      if (char == '"') {
+        if (insideQuote) {
+          if (i + 1 < line.length && line[i + 1] == '"') {
+            sb.write('"');
+            i++;
+          } else {
+            insideQuote = false;
+          }
+        } else if (!fieldStarted && sb.length == 0) {
+          insideQuote = true;
+          fieldStarted = true;
+          fieldWasQuoted = true;
+        } else {
+          sb.write(char);
+          fieldStarted = true;
+        }
+      } else if (char == delimiter && !insideQuote) {
+        addField();
+      } else {
+        sb.write(char);
+        fieldStarted = true;
+      }
+    }
+    addField();
     return result;
   }
 
@@ -554,8 +609,11 @@ class BearFuelImporter {
       if (nameLen == 0) continue;
       final rawNameBytes = dirBytes.sublist(i, i + nameLen);
       final name = String.fromCharCodes(
-        Uint16List.view(rawNameBytes.buffer, rawNameBytes.offsetInBytes,
-            rawNameBytes.lengthInBytes ~/ 2),
+        Uint16List.view(
+          rawNameBytes.buffer,
+          rawNameBytes.offsetInBytes,
+          rawNameBytes.lengthInBytes ~/ 2,
+        ),
       ).replaceAll('\x00', '');
 
       if (name == 'Workbook' || name == 'Book') {
@@ -617,8 +675,11 @@ class BearFuelImporter {
               if (p + byteLen > recOffset + rlen) break;
               final rawStr = wbBytes.sublist(p, p + byteLen);
               final str = String.fromCharCodes(
-                Uint16List.view(rawStr.buffer, rawStr.offsetInBytes,
-                    rawStr.lengthInBytes ~/ 2),
+                Uint16List.view(
+                  rawStr.buffer,
+                  rawStr.offsetInBytes,
+                  rawStr.lengthInBytes ~/ 2,
+                ),
               );
               sst.add(str);
               p += byteLen;
@@ -667,8 +728,9 @@ class BearFuelImporter {
           int col = firstCol;
           while (col <= lastCol && p + 6 <= recOffset + rlen) {
             final rkVal = bd.getInt32(p + 2, Endian.little);
-            cellMap.putIfAbsent(row, () => {})[col] =
-                _decodeRk(rkVal).toString();
+            cellMap.putIfAbsent(row, () => {})[col] = _decodeRk(
+              rkVal,
+            ).toString();
             p += 6;
             col++;
           }

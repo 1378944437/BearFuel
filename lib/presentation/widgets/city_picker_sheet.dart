@@ -6,11 +6,13 @@ import '../../core/utils/location_service.dart';
 class CityPickerSheet extends StatefulWidget {
   final String currentCity;
   final UserLocation? currentGpsLocation;
+  final bool domesticOnly;
 
   const CityPickerSheet({
     super.key,
     required this.currentCity,
     this.currentGpsLocation,
+    this.domesticOnly = false,
   });
 
   /// 快速弹出城市选择器
@@ -18,6 +20,7 @@ class CityPickerSheet extends StatefulWidget {
     BuildContext context, {
     required String currentCity,
     UserLocation? currentGpsLocation,
+    bool domesticOnly = false,
   }) {
     return showModalBottomSheet<String>(
       context: context,
@@ -26,6 +29,7 @@ class CityPickerSheet extends StatefulWidget {
       builder: (ctx) => CityPickerSheet(
         currentCity: currentCity,
         currentGpsLocation: currentGpsLocation,
+        domesticOnly: domesticOnly,
       ),
     );
   }
@@ -144,7 +148,9 @@ class _CityPickerSheetState extends State<CityPickerSheet> {
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text(result.message), backgroundColor: Colors.orange),
+            content: Text(result.message),
+            backgroundColor: Colors.orange,
+          ),
         );
       }
     } catch (e) {
@@ -264,11 +270,16 @@ class _CityPickerSheetState extends State<CityPickerSheet> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(AppIcons.location_off,
-                size: 48, color: colors.onSurfaceVariant),
+            Icon(
+              AppIcons.location_off,
+              size: 48,
+              color: colors.onSurfaceVariant,
+            ),
             const SizedBox(height: 12),
-            Text('未找到包含 “$query” 的城市',
-                style: TextStyle(color: colors.onSurfaceVariant)),
+            Text(
+              '未找到包含 “$query” 的城市',
+              style: TextStyle(color: colors.onSurfaceVariant),
+            ),
           ],
         ),
       );
@@ -284,8 +295,9 @@ class _CityPickerSheetState extends State<CityPickerSheet> {
         return ListTile(
           leading: Icon(
             AppIcons.location_city,
-            color:
-                isCurrent ? const Color(0xFFFF5A24) : colors.onSurfaceVariant,
+            color: isCurrent
+                ? const Color(0xFFFF5A24)
+                : colors.onSurfaceVariant,
           ),
           title: Text(
             city,
@@ -295,10 +307,16 @@ class _CityPickerSheetState extends State<CityPickerSheet> {
             ),
           ),
           trailing: isCurrent
-              ? const Icon(AppIcons.check_circle,
-                  color: Color(0xFFFF5A24), size: 20)
-              : Icon(AppIcons.chevron_right,
-                  size: 18, color: colors.onSurfaceVariant),
+              ? const Icon(
+                  AppIcons.check_circle,
+                  color: Color(0xFFFF5A24),
+                  size: 20,
+                )
+              : Icon(
+                  AppIcons.chevron_right,
+                  size: 18,
+                  color: colors.onSurfaceVariant,
+                ),
           onTap: () => Navigator.pop(context, city),
         );
       },
@@ -309,8 +327,9 @@ class _CityPickerSheetState extends State<CityPickerSheet> {
   Widget _buildHotCitySections(bool isDark, Color cardBg) {
     final colors = Theme.of(context).colorScheme;
     // 默认展示前 17 个城市 + 1个定位按钮 = 18个格子 (6排)
-    final displayedCities =
-        _isExpanded ? _domesticHotCities : _domesticHotCities.take(17).toList();
+    final displayedCities = _isExpanded
+        ? _domesticHotCities
+        : _domesticHotCities.take(17).toList();
 
     return SingleChildScrollView(
       child: Column(
@@ -364,15 +383,19 @@ class _CityPickerSheetState extends State<CityPickerSheet> {
               borderRadius: BorderRadius.circular(16),
               onTap: () => setState(() => _isExpanded = !_isExpanded),
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
                       _isExpanded ? '收起 ' : '展开 ',
                       style: TextStyle(
-                          fontSize: 13, color: colors.onSurfaceVariant),
+                        fontSize: 13,
+                        color: colors.onSurfaceVariant,
+                      ),
                     ),
                     Icon(
                       _isExpanded
@@ -388,42 +411,44 @@ class _CityPickerSheetState extends State<CityPickerSheet> {
           ),
           const SizedBox(height: 16),
 
-          // “国际热门城市” 标题
-          Text(
-            '国际热门城市',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: colors.onSurfaceVariant,
+          if (!widget.domesticOnly) ...[
+            // “国际热门城市” 标题
+            Text(
+              '国际热门城市',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: colors.onSurfaceVariant,
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
+            const SizedBox(height: 12),
 
-          // 国际热门城市 3列网格
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
-              childAspectRatio: 2.6,
+            // 国际热门城市 3列网格
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+                childAspectRatio: 2.6,
+              ),
+              itemCount: _internationalHotCities.length,
+              itemBuilder: (context, index) {
+                final city = _internationalHotCities[index];
+                final isSelected = city == widget.currentCity;
+
+                return _buildCityPill(
+                  title: city,
+                  isSelected: isSelected,
+                  isDark: isDark,
+                  cardBg: cardBg,
+                  onTap: () => Navigator.pop(context, city),
+                );
+              },
             ),
-            itemCount: _internationalHotCities.length,
-            itemBuilder: (context, index) {
-              final city = _internationalHotCities[index];
-              final isSelected = city == widget.currentCity;
-
-              return _buildCityPill(
-                title: city,
-                isSelected: isSelected,
-                isDark: isDark,
-                cardBg: cardBg,
-                onTap: () => Navigator.pop(context, city),
-              );
-            },
-          ),
-          const SizedBox(height: 24),
+            const SizedBox(height: 24),
+          ],
         ],
       ),
     );
@@ -450,13 +475,18 @@ class _CityPickerSheetState extends State<CityPickerSheet> {
                   width: 14,
                   height: 14,
                   child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Color(0xFF2196F3)),
+                    strokeWidth: 2,
+                    color: Color(0xFF2196F3),
+                  ),
                 )
               : Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(AppIcons.location_on,
-                        size: 14, color: Color(0xFF2196F3)),
+                    const Icon(
+                      AppIcons.location_on,
+                      size: 14,
+                      color: Color(0xFF2196F3),
+                    ),
                     const SizedBox(width: 3),
                     Flexible(
                       child: Text(

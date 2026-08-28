@@ -1,4 +1,6 @@
 import 'package:bearfuel/core/theme/app_icons.dart';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -82,9 +84,6 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     final refuelProv = context.watch<RefuelProvider>();
     final expenseProv = context.watch<ExpenseProvider>();
     final priceProv = context.watch<FuelPriceProvider>();
-    final province =
-        priceProv.currentProvince.isNotEmpty ? priceProv.currentProvince : '湖北';
-
     final allRecords = refuelProv.records;
     final allExpenses = expenseProv.expenses;
     final now = DateTime.now();
@@ -346,7 +345,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                         context, records, rangeAvgConsumption),
 
                     // 3. 环境气温看板
-                    _buildClimateAndMarketTab(context, records, province),
+                    _buildClimateAndMarketTab(context, records),
                   ],
                 ),
 
@@ -566,7 +565,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
   }
 
   Widget _buildClimateAndMarketTab(
-      BuildContext context, List<RefuelRecordModel> records, String province) {
+      BuildContext context, List<RefuelRecordModel> records) {
     final colors = Theme.of(context).colorScheme;
     final fuelProv = context.watch<FuelPriceProvider>();
     final weatherProv = context.watch<WeatherProvider>();
@@ -586,6 +585,31 @@ class _StatisticsScreenState extends State<StatisticsScreen>
       records,
       weatherProv.snapshots,
     );
+    String? weatherCity;
+    final currentWeatherCity = weatherProv.current?.cityName;
+    if (currentWeatherCity != null && currentWeatherCity.isNotEmpty) {
+      weatherCity = currentWeatherCity;
+    } else {
+      for (final snapshot in weatherProv.snapshots) {
+        if (snapshot.cityName.isNotEmpty) {
+          weatherCity = snapshot.cityName;
+          break;
+        }
+      }
+    }
+    final chartValues = displayTempVsCons
+        .expand((point) => [point.avgConsumption, point.estimatedTemperature])
+        .toList();
+    final boundedChartValues = chartValues.isEmpty ? [0.0] : chartValues;
+    final rawChartMin = boundedChartValues.reduce((a, b) => a < b ? a : b);
+    final rawChartMax = boundedChartValues.reduce((a, b) => a > b ? a : b);
+    final chartPadding = math.max(2.0, (rawChartMax - rawChartMin) * 0.1);
+    final chartMinY =
+        math.min(0.0, (rawChartMin - chartPadding).floorToDouble());
+    final chartMaxY =
+        math.max(0.0, (rawChartMax + chartPadding).ceilToDouble());
+    final chartYInterval =
+        math.max(1.0, (chartMaxY - chartMinY) / 5).ceilToDouble();
 
     final anomalies = StatisticsService.getAnomalyDiagnostics(records);
     final validConsumptionCount = records
@@ -640,7 +664,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
-                        '常驻: $province',
+                        '数据地区: ${weatherCity ?? '暂无定位地区'}',
                         style: const TextStyle(
                             fontSize: 10,
                             color: Color(0xFF1E88E5),
@@ -650,7 +674,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                   ],
                 ),
                 const SizedBox(height: 4),
-                Text('关联已保存的 $province 每日天气快照，揭示温度变化与油耗的关系',
+                Text('关联已保存的 ${weatherCity ?? '实际定位地区'} 每日天气快照，揭示温度变化与油耗的关系',
                     style: TextStyle(
                         fontSize: 11, color: colors.onSurfaceVariant)),
                 const SizedBox(height: 10),
@@ -672,7 +696,8 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                   child: BarChart(
                     BarChartData(
                       alignment: BarChartAlignment.spaceAround,
-                      maxY: 35,
+                      minY: chartMinY,
+                      maxY: chartMaxY,
                       gridData: FlGridData(
                         show: true,
                         drawVerticalLine: false,
@@ -725,6 +750,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                           sideTitles: SideTitles(
                             showTitles: true,
                             reservedSize: 26,
+                            interval: chartYInterval,
                             getTitlesWidget: (val, meta) {
                               return Text('${val.toInt()}',
                                   style: TextStyle(

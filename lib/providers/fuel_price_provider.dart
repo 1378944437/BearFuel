@@ -83,8 +83,15 @@ class FuelPriceProvider extends ChangeNotifier {
   }
 
   /// 用户手动切换/选择城市
-  Future<void> updateCity(String cityName) async {
+  Future<bool> updateCity(String cityName) async {
     final province = FuelPriceService.cityToProvince(cityName);
+    if (!FuelPriceService.getAllProvinces().contains(province)) {
+      _statusText = '油价服务暂不支持 $cityName 的省级油价查询';
+      _priceStatusText = '当前城市没有可用的省级油价映射';
+      notifyListeners();
+      return false;
+    }
+
     _currentCity = cityName;
     _currentProvince = province;
     _oilForecastResponse = null;
@@ -99,6 +106,7 @@ class FuelPriceProvider extends ChangeNotifier {
     } catch (_) {}
 
     await _loadRemotePriceForCity(cityName);
+    return true;
   }
 
   /// 触发 GPS 卫星硬件定位与逆地理编码
@@ -158,6 +166,11 @@ class FuelPriceProvider extends ChangeNotifier {
 
   Future<void> refreshAdjustmentData({bool force = false}) async {
     if (_isRefreshingForecast) return;
+    if (!FuelPriceService.getAllProvinces().contains(_currentProvince)) {
+      _forecastStatusText = '当前城市没有可用的省级调价数据';
+      notifyListeners();
+      return;
+    }
     _isRefreshingForecast = true;
     _forecastStatusText = '正在读取 ApiZero 调价预测和日历...';
     notifyListeners();
@@ -186,8 +199,16 @@ class FuelPriceProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> _loadRemotePriceForCity(String cityName,
-      {bool force = false}) async {
+  Future<void> _loadRemotePriceForCity(
+    String cityName, {
+    bool force = false,
+  }) async {
+    if (!FuelPriceService.getAllProvinces().contains(_currentProvince)) {
+      _priceStatusText = '当前城市没有可用的省级油价映射';
+      notifyListeners();
+      return;
+    }
+
     final requestId = ++_priceRequestId;
     _priceStatusText = force ? '正在手动读取实时油价...' : '正在读取实时油价...';
     notifyListeners();

@@ -49,4 +49,9 @@ jobs:
         run: flutter test --no-pub
 
       - name: Verify arm64 build
-        run: flutter build apk --debug --no-pub --target-platform android-arm64
+        run: |
+          VERSION_NAME="$(awk '/^version:/{print $2}' pubspec.yaml)"
+          VERSION_NAME="${VERSION_NAME%%+*}"
+          flutter build apk --debug --no-pub \
+            --dart-define=APP_VERSION="$VERSION_NAME" \
+            --target-platform android-arm64

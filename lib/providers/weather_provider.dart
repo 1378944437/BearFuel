@@ -93,7 +93,7 @@ class WeatherProvider extends ChangeNotifier {
         referenceDates: referenceDates,
         existingDates: _snapshots.map((snapshot) => snapshot.snapshotDate),
       );
-      final fetchedSnapshots = <WeatherSnapshotModel>[current];
+      final fetchedSnapshots = <WeatherSnapshotModel>[];
       for (final month in monthKeys) {
         final history = await MojiWeatherService.fetchHistoryMonth(
           cityId: cityId,
@@ -101,6 +101,9 @@ class WeatherProvider extends ChangeNotifier {
         );
         if (history != null) fetchedSnapshots.addAll(history);
       }
+      // The history endpoint may include today. Write current conditions last
+      // so a same-day history row cannot overwrite the freshest observation.
+      fetchedSnapshots.add(current);
       await _db.upsertWeatherSnapshots(fetchedSnapshots);
       _snapshots = await _db.getWeatherSnapshots(cityKey: cityId);
       _lastFetchedAt = DateTime.now();

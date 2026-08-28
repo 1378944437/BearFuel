@@ -69,8 +69,10 @@ void main() {
       final computed = FuelCalculator.computeRecords(parseResult.parsedRecords);
 
       final exportedCsv = BearFuelImporter.exportToCsv(computed);
-      expect(exportedCsv,
-          contains('时间,当前里程,加油量,单价,金额,是否加满,是否漏记,油品,加油站,百公里油耗,每公里花费,备注'));
+      expect(
+        exportedCsv,
+        contains('时间,当前里程,加油量,单价,金额,是否加满,是否漏记,油品,加油站,百公里油耗,每公里花费,备注'),
+      );
       expect(exportedCsv, contains('8.00,0.64'));
     });
 
@@ -114,6 +116,41 @@ void main() {
       expect(result.success, isFalse);
       expect(result.validCount, equals(0));
       expect(result.skippedCount, equals(1));
+    });
+
+    test('8. RFC 4180 字段中的逗号、引号和换行可完整往返', () {
+      final record = RefuelRecordModel(
+        id: 'record_2',
+        vehicleId: 'car_1',
+        refuelDate: DateTime(2026, 4, 2, 8, 30),
+        mileage: 12100,
+        fuelAmount: 41,
+        unitPrice: 8.1,
+        totalPrice: 332.1,
+        fuelType: '92# 汽油',
+        gasStation: '北京,朝阳"站',
+        note: '高速,满载\n夜间到站',
+      );
+
+      final exported = BearFuelImporter.exportToCsv([record]);
+      final result = BearFuelImporter.parseCsv(exported, 'car_1');
+
+      expect(result.success, isTrue);
+      expect(result.validCount, equals(1));
+      expect(result.parsedRecords.single.gasStation, equals('北京,朝阳"站'));
+      expect(result.parsedRecords.single.note, equals('高速,满载\n夜间到站'));
+    });
+
+    test('9. XLSX ZIP 文件明确返回不支持', () {
+      final result = BearFuelImporter.parseBytes([
+        0x50,
+        0x4B,
+        0x03,
+        0x04,
+      ], 'car_1');
+
+      expect(result.success, isFalse);
+      expect(result.errorMessage, contains('不支持 XLSX'));
     });
   });
 }

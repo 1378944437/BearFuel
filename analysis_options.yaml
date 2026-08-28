@@ -5,4 +5,3 @@ linter:
     prefer_const_constructors: true
     prefer_const_declarations: true
     avoid_print: false # 允许日志打印
-    use_build_context_synchronously: false
