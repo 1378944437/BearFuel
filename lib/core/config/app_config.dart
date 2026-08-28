@@ -6,7 +6,7 @@ enum Environment {
 
 /// 全局应用环境与配置隔离类
 class AppConfig {
-  static const String versionName = '0.2.8';
+  static const String versionName = '0.2.9';
 
   static Environment _environment = Environment.development;
 

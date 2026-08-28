@@ -66,7 +66,26 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build unsigned split Android APKs
+      - name: Restore Android release signing
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE_BASE64"
+          test -n "$KEY_ALIAS"
+          test -n "$KEY_PASSWORD"
+          test -n "$STORE_PASSWORD"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/bearfuel-release.jks"
+
+      - name: Build signed split Android APKs
+        env:
+          BEARFUEL_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          BEARFUEL_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          BEARFUEL_KEYSTORE_PATH: ${{ runner.temp }}/bearfuel-release.jks
+          BEARFUEL_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
         run: >-
           flutter build apk --release --no-pub
           --target-platform android-arm,android-arm64,android-x64
@@ -80,6 +99,7 @@ jobs:
             SOURCE="build/app/outputs/flutter-apk/app-${ABI}-release.apk"
             APK="BearFuel-v${GITHUB_REF_NAME#v}-android-${ABI}-release.apk"
             test -f "$SOURCE"
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify "$SOURCE"
             cp "$SOURCE" "$APK"
             sha256sum "$APK" > "${APK}.sha256"
           done

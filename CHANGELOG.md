@@ -3,12 +3,18 @@
 BearFuel follows semantic versioning. Android build numbers increase for every
 published APK.
 
+## [0.2.9] - 2026-08-28
+
+- Restored permanent release signing and signature verification for split Android APKs.
+- Removed retired report sharing, PDF export, and unused UI components.
+- Rewrote the GitHub project documentation and removed obsolete local artifacts.
+
 ## [0.2.8] - 2026-08-28
 
 - Fixed the last-known map location distance using a hardcoded Jingmen coordinate.
 - Fixed record time-range boundaries, weather snapshot fallback, and forecast cold-start rate limiting.
 - Fixed stale backup version metadata, swallowed calculation write failures, and missing cached-price labeling.
-- Release automation now builds unsigned split Android APKs and an unsigned iOS IPA while retaining local signing support.
+- Release automation builds unsigned split Android APKs and an unsigned iOS IPA.
 
 ## [0.2.6] - 2026-08-28
 
