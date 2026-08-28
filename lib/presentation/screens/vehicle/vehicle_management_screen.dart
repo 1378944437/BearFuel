@@ -124,8 +124,8 @@ class VehicleManagementScreen extends StatelessWidget {
                                 controller: capacityCtrl,
                                 keyboardType:
                                     const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
+                                  decimal: true,
+                                ),
                                 inputFormatters: [AppInputFormatters.decimal2],
                                 decoration: const InputDecoration(
                                   labelText: '油箱容积 (L) *',
@@ -147,8 +147,8 @@ class VehicleManagementScreen extends StatelessWidget {
                                 controller: mileageCtrl,
                                 keyboardType:
                                     const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
+                                  decimal: true,
+                                ),
                                 inputFormatters: [AppInputFormatters.decimal2],
                                 decoration: const InputDecoration(
                                   labelText: '初始里程 (km) *',
@@ -221,13 +221,12 @@ class VehicleManagementScreen extends StatelessWidget {
                                   : modelCtrl.text.trim(),
                               tankCapacity:
                                   double.tryParse(capacityCtrl.text.trim()) ??
-                                  50.0,
+                                      50.0,
                               initialMileage:
                                   double.tryParse(mileageCtrl.text.trim()) ??
-                                  0.0,
+                                      0.0,
                               defaultFuelType: selectedFuel,
-                              isDefault:
-                                  editVehicle?.isDefault ??
+                              isDefault: editVehicle?.isDefault ??
                                   (vehicleProv.vehicles.isEmpty),
                             );
 
@@ -247,8 +246,8 @@ class VehicleManagementScreen extends StatelessWidget {
                                   await vehicleProv.selectVehicle(vehicle);
                                   if (context.mounted) {
                                     context.read<RefuelProvider>().loadRecords(
-                                      vehicle.id,
-                                    );
+                                          vehicle.id,
+                                        );
                                     context
                                         .read<ExpenseProvider>()
                                         .loadExpenses(vehicle.id);
@@ -268,13 +267,12 @@ class VehicleManagementScreen extends StatelessWidget {
                                   content: Text(
                                     success
                                         ? (editVehicle != null
-                                              ? '已修改车辆“${vehicle.name}”档案'
-                                              : '已成功添加爱车“${vehicle.name}”！')
+                                            ? '已修改车辆“${vehicle.name}”档案'
+                                            : '已成功添加爱车“${vehicle.name}”！')
                                         : '保存失败: ${errorMsg ?? "数据存取异常，请重试"}',
                                   ),
-                                  backgroundColor: success
-                                      ? Colors.green
-                                      : Colors.red,
+                                  backgroundColor:
+                                      success ? Colors.green : Colors.red,
                                 ),
                               );
                             }
@@ -599,9 +597,9 @@ class VehicleManagementScreen extends StatelessWidget {
                                     if (confirm == true && context.mounted) {
                                       final wasCurrent =
                                           vehicleProv.currentVehicle?.id ==
-                                          v.id;
-                                      final deleted = await vehicleProv
-                                          .deleteVehicle(v.id);
+                                              v.id;
+                                      final deleted =
+                                          await vehicleProv.deleteVehicle(v.id);
                                       if (deleted &&
                                           wasCurrent &&
                                           context.mounted &&

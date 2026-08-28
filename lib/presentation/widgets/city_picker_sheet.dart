@@ -295,9 +295,8 @@ class _CityPickerSheetState extends State<CityPickerSheet> {
         return ListTile(
           leading: Icon(
             AppIcons.location_city,
-            color: isCurrent
-                ? const Color(0xFFFF5A24)
-                : colors.onSurfaceVariant,
+            color:
+                isCurrent ? const Color(0xFFFF5A24) : colors.onSurfaceVariant,
           ),
           title: Text(
             city,
@@ -327,9 +326,8 @@ class _CityPickerSheetState extends State<CityPickerSheet> {
   Widget _buildHotCitySections(bool isDark, Color cardBg) {
     final colors = Theme.of(context).colorScheme;
     // 默认展示前 17 个城市 + 1个定位按钮 = 18个格子 (6排)
-    final displayedCities = _isExpanded
-        ? _domesticHotCities
-        : _domesticHotCities.take(17).toList();
+    final displayedCities =
+        _isExpanded ? _domesticHotCities : _domesticHotCities.take(17).toList();
 
     return SingleChildScrollView(
       child: Column(

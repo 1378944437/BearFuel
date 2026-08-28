@@ -93,9 +93,8 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text(fuelProv.statusText),
-                          backgroundColor: success
-                              ? Colors.green
-                              : Colors.orange,
+                          backgroundColor:
+                              success ? Colors.green : Colors.orange,
                           duration: const Duration(seconds: 2),
                         ),
                       );
@@ -201,8 +200,7 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
     final isLoading = fuelProv.priceStatusText.startsWith('正在');
     final accent = isOnlineApi ? colors.secondary : colors.primary;
     final fetchedAt = fuelProv.priceFetchedAt;
-    final isCached =
-        fetchedAt != null &&
+    final isCached = fetchedAt != null &&
         DateTime.now().difference(fetchedAt) > const Duration(minutes: 30);
     final source = isOnlineApi
         ? 'ApiZero 当前省级油价接口${isCached ? '（本地缓存）' : ''}'
@@ -226,8 +224,8 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
             isLoading
                 ? AppIcons.sync_outlined
                 : (isOnlineApi
-                      ? AppIcons.verified_outlined
-                      : AppIcons.warning_amber_rounded),
+                    ? AppIcons.verified_outlined
+                    : AppIcons.warning_amber_rounded),
             size: 18,
             color: accent,
           ),
@@ -273,9 +271,8 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
     }
     final colors = Theme.of(context).colorScheme;
     final capacity = vehicle?.tankCapacity ?? 50.0;
-    final capacityLabel = capacity
-        .toStringAsFixed(2)
-        .replaceFirst(RegExp(r'\.?0+$'), '');
+    final capacityLabel =
+        capacity.toStringAsFixed(2).replaceFirst(RegExp(r'\.?0+$'), '');
     final cost92 = capacity * price.gas92;
     final cost95 = capacity * price.gas95;
     final potentialDelta = (forecast.forecastDelta * capacity).abs();
@@ -397,12 +394,12 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
               color: isStagnant
                   ? colors.surfaceContainerHighest.withValues(alpha: 0.45)
                   : (forecast.isIncrease
-                        ? (isDark
-                              ? const Color(0xFF3A2F1B)
-                              : const Color(0xFFFFF3E0))
-                        : (isDark
-                              ? const Color(0xFF203429)
-                              : const Color(0xFFE8F5E9))),
+                      ? (isDark
+                          ? const Color(0xFF3A2F1B)
+                          : const Color(0xFFFFF3E0))
+                      : (isDark
+                          ? const Color(0xFF203429)
+                          : const Color(0xFFE8F5E9))),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Row(
@@ -411,14 +408,14 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
                   isStagnant
                       ? AppIcons.horizontal_rule
                       : (forecast.isIncrease
-                            ? AppIcons.trending_up
-                            : AppIcons.trending_down),
+                          ? AppIcons.trending_up
+                          : AppIcons.trending_down),
                   size: 16,
                   color: isStagnant
                       ? colors.onSurfaceVariant
                       : (forecast.isIncrease
-                            ? (isDark ? Colors.orange[200] : Colors.orange[800])
-                            : (isDark ? Colors.green[200] : Colors.green[800])),
+                          ? (isDark ? Colors.orange[200] : Colors.orange[800])
+                          : (isDark ? Colors.green[200] : Colors.green[800])),
                 ),
                 const SizedBox(width: 6),
                 Expanded(
@@ -426,20 +423,20 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
                     isStagnant
                         ? '下轮调价预计搁浅，当前无需根据预测提前加油。'
                         : (forecast.isIncrease
-                              ? '下轮调价预计上涨，提前加满一箱可节省约 ¥${potentialDelta.toStringAsFixed(1)} 元！'
-                              : '下轮调价预计下调，建议按需补油，下周加满可省约 ¥${potentialDelta.toStringAsFixed(1)} 元。'),
+                            ? '下轮调价预计上涨，提前加满一箱可节省约 ¥${potentialDelta.toStringAsFixed(1)} 元！'
+                            : '下轮调价预计下调，建议按需补油，下周加满可省约 ¥${potentialDelta.toStringAsFixed(1)} 元。'),
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                       color: isStagnant
                           ? colors.onSurface
                           : (forecast.isIncrease
-                                ? (isDark
-                                      ? Colors.orange[200]
-                                      : Colors.orange[900])
-                                : (isDark
-                                      ? Colors.green[200]
-                                      : Colors.green[900])),
+                              ? (isDark
+                                  ? Colors.orange[200]
+                                  : Colors.orange[900])
+                              : (isDark
+                                  ? Colors.green[200]
+                                  : Colors.green[900])),
                     ),
                   ),
                 ),
@@ -558,14 +555,14 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
                   color: !showChange
                       ? color.withValues(alpha: 0.12)
                       : (isZero
-                            ? Colors.grey.withValues(alpha: 0.2)
-                            : (isUp
-                                  ? (isDark
-                                        ? const Color(0xFF4A2F32)
-                                        : const Color(0xFFFFEBEE))
-                                  : (isDark
-                                        ? const Color(0xFF24452F)
-                                        : const Color(0xFFE8F5E9)))),
+                          ? Colors.grey.withValues(alpha: 0.2)
+                          : (isUp
+                              ? (isDark
+                                  ? const Color(0xFF4A2F32)
+                                  : const Color(0xFFFFEBEE))
+                              : (isDark
+                                  ? const Color(0xFF24452F)
+                                  : const Color(0xFFE8F5E9)))),
                   borderRadius: BorderRadius.circular(3),
                 ),
                 child: Text(
@@ -578,14 +575,12 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
                     color: !showChange
                         ? color
                         : (isZero
-                              ? colors.onSurfaceVariant
-                              : (isUp
-                                    ? (isDark
-                                          ? Colors.red[200]
-                                          : Colors.red[800])
-                                    : (isDark
-                                          ? Colors.green[200]
-                                          : Colors.green[800]))),
+                            ? colors.onSurfaceVariant
+                            : (isUp
+                                ? (isDark ? Colors.red[200] : Colors.red[800])
+                                : (isDark
+                                    ? Colors.green[200]
+                                    : Colors.green[800]))),
                   ),
                 ),
               ),
@@ -629,8 +624,8 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
     final accent = isStagnant
         ? colors.onSurfaceVariant
         : (isDark
-              ? (isIncrease ? Colors.red[200]! : Colors.green[200]!)
-              : (isIncrease ? Colors.red[800]! : Colors.green[800]!));
+            ? (isIncrease ? Colors.red[200]! : Colors.green[200]!)
+            : (isIncrease ? Colors.red[800]! : Colors.green[800]!));
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(16),
@@ -652,8 +647,8 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
                       isStagnant
                           ? AppIcons.horizontal_rule
                           : (isIncrease
-                                ? AppIcons.trending_up
-                                : AppIcons.trending_down),
+                              ? AppIcons.trending_up
+                              : AppIcons.trending_down),
                       color: accent,
                       size: 22,
                     ),
@@ -746,9 +741,8 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
     List<ApiZeroAdjustmentScheduleItem> history,
   ) {
     final colors = Theme.of(context).colorScheme;
-    final points = history
-        .where((item) => item.gasolineYuanPerTon != null)
-        .toList();
+    final points =
+        history.where((item) => item.gasolineYuanPerTon != null).toList();
     if (points.isEmpty) {
       return _buildUnavailablePriceCard('暂无在线调价幅度数据');
     }
@@ -917,23 +911,21 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
               final color = isStagnant
                   ? colors.onSurfaceVariant
                   : (isUp
-                        ? (isDark ? Colors.red[200]! : Colors.red[700]!)
-                        : (isDown
-                              ? (isDark
-                                    ? Colors.green[200]!
-                                    : Colors.green[700]!)
-                              : colors.onSurface));
+                      ? (isDark ? Colors.red[200]! : Colors.red[700]!)
+                      : (isDown
+                          ? (isDark ? Colors.green[200]! : Colors.green[700]!)
+                          : colors.onSurface));
               final amount = item.gasolineYuanPerTon;
               final amountText = isStagnant
                   ? ' · 汽油、柴油均未调整'
                   : (amount == null
-                        ? ''
-                        : ' · 汽油 ${amount > 0 ? '+' : ''}${amount.toStringAsFixed(0)} 元/吨');
+                      ? ''
+                      : ' · 汽油 ${amount > 0 ? '+' : ''}${amount.toStringAsFixed(0)} 元/吨');
               final summary = item.summary;
               final displayStatus =
                   item.status == '已过' && amount == null && summary == null
-                  ? '已过，接口未返回实际调价结果'
-                  : item.status;
+                      ? '已过，接口未返回实际调价结果'
+                      : item.status;
               final dateLabel =
                   '${item.date.year}年\n${item.date.month.toString().padLeft(2, '0')}月${item.date.day.toString().padLeft(2, '0')}日';
               return Padding(

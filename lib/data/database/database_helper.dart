@@ -650,12 +650,14 @@ class DatabaseHelper {
 
     // Validate before opening the replacement transaction. An empty or
     // malformed backup must never be allowed to clear the local database.
-    final isValid =
-        backupData['app'] == 'BearFuel' &&
-        hasRequiredRows(backupData['vehicles'], const [
-          'id',
-          'name',
-        ], allowEmpty: false) &&
+    final isValid = backupData['app'] == 'BearFuel' &&
+        hasRequiredRows(
+            backupData['vehicles'],
+            const [
+              'id',
+              'name',
+            ],
+            allowEmpty: false) &&
         hasRequiredRows(backupData['refuel_records'], const [
           'id',
           'vehicle_id',

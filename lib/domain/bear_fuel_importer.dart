@@ -82,9 +82,8 @@ class BearFuelImporter {
     }
 
     try {
-      final content = csvContent
-          .replaceAll('\r\n', '\n')
-          .replaceAll('\r', '\n');
+      final content =
+          csvContent.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
       final lines = _splitCsvRecords(
         content,
       ).where((e) => e.trim().isNotEmpty).toList();
@@ -213,10 +212,10 @@ class BearFuelImporter {
         final isFullTank = (fullStr == null || fullStr.isEmpty)
             ? true
             : (fullStr.contains('是') ||
-                  fullStr == '1' ||
-                  fullStr.contains('满') ||
-                  fullStr == 'true' ||
-                  fullStr == 'yes');
+                fullStr == '1' ||
+                fullStr.contains('满') ||
+                fullStr == 'true' ||
+                fullStr == 'yes');
 
         // 是否漏记
         final forgotStr = _getColValue(
@@ -226,10 +225,10 @@ class BearFuelImporter {
         final isForgotPrevious = (forgotStr == null || forgotStr.isEmpty)
             ? false
             : (forgotStr.contains('是') ||
-                  forgotStr == '1' ||
-                  forgotStr.contains('漏') ||
-                  forgotStr == 'true' ||
-                  forgotStr == 'yes');
+                forgotStr == '1' ||
+                forgotStr.contains('漏') ||
+                forgotStr == 'true' ||
+                forgotStr == 'yes');
 
         // 油品
         var rawFuel = _getColValue(row, colMap['fuelType']) ?? FuelType.gas92;
@@ -258,8 +257,7 @@ class BearFuelImporter {
             unitPrice: unitPrice,
             totalPrice: totalPrice,
             fuelType: rawFuel,
-            gasStation:
-                (gasStation != null &&
+            gasStation: (gasStation != null &&
                     gasStation.isNotEmpty &&
                     gasStation != 'nan')
                 ? gasStation
