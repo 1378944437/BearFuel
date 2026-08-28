@@ -7,6 +7,9 @@ import '../../core/config/app_config.dart';
 import '../../domain/fuel_price_service.dart';
 import 'fuel_price_api_config.dart';
 
+bool _validFuelPrice(double? value) =>
+    value != null && value.isFinite && value > 0;
+
 class ApiZeroFuelPriceSnapshot {
   final String province;
   final ProvinceFuelPrice price;
@@ -45,7 +48,10 @@ class ApiZeroFuelPriceSnapshot {
     final gas95 = number(json['gas95']);
     final gas98 = number(json['gas98']);
     final diesel0 = number(json['diesel0']);
-    if (gas92 == null || gas95 == null || gas98 == null || diesel0 == null) {
+    if (!_validFuelPrice(gas92) ||
+        !_validFuelPrice(gas95) ||
+        !_validFuelPrice(gas98) ||
+        !_validFuelPrice(diesel0)) {
       return null;
     }
     final priceDate = DateTime.tryParse('${json['priceDate'] ?? ''}') ??
@@ -55,10 +61,10 @@ class ApiZeroFuelPriceSnapshot {
       province: province,
       price: ProvinceFuelPrice(
         province: province,
-        gas92: gas92,
-        gas95: gas95,
-        gas98: gas98,
-        diesel0: diesel0,
+        gas92: gas92!,
+        gas95: gas95!,
+        gas98: gas98!,
+        diesel0: diesel0!,
         lastChangeAmount: 0,
         lastChangeDate: priceDate,
       ),
@@ -81,6 +87,7 @@ class ApiZeroConnectionTestResult {
 class ApiZeroFuelPriceService {
   static const Duration minimumRequestInterval = Duration(minutes: 30);
   static const Duration minimumManualRequestInterval = Duration(minutes: 1);
+  static const Duration maximumCacheAge = Duration(days: 7);
   static String? _lastErrorMessage;
 
   static String? get lastErrorMessage => _lastErrorMessage;
@@ -123,6 +130,7 @@ class ApiZeroFuelPriceService {
     try {
       _lastErrorMessage = null;
       final cached = await _readCache(province);
+      final usableCached = _isFresh(cached) ? cached : null;
       final prefs = await SharedPreferences.getInstance();
       final attemptKey =
           force ? _manualAttemptKey(province) : _attemptKey(province);
@@ -134,11 +142,12 @@ class ApiZeroFuelPriceService {
           DateTime.fromMillisecondsSinceEpoch(lastAttemptMillis),
         );
         if (!elapsed.isNegative && elapsed < minimumInterval) {
-          if (cached == null) {
-            _lastErrorMessage =
-                force ? '最近一次手动请求仍在 1 分钟限制内' : '最近一次自动请求仍在 30 分钟限制内，请点击手动更新';
+          if (usableCached == null) {
+            _lastErrorMessage = cached == null
+                ? (force ? '最近一次手动请求仍在 1 分钟限制内' : '最近一次自动请求仍在 30 分钟限制内，请点击手动更新')
+                : '本地油价缓存已过期，请稍后重试';
           }
-          return cached;
+          return usableCached;
         }
       }
 
@@ -147,7 +156,7 @@ class ApiZeroFuelPriceService {
       if (force) await prefs.setInt(_manualAttemptKey(province), nowMillis);
 
       final fetched = await _fetch(province);
-      if (fetched == null) return cached;
+      if (fetched == null) return usableCached;
       await prefs.setString(_cacheKey(province), jsonEncode(fetched.toJson()));
       return fetched;
     } catch (e) {
@@ -260,7 +269,10 @@ class ApiZeroFuelPriceService {
     final gas98 = numberFor(['98', '98号汽油', 'gas98', 'gasoline_98', 'p98']);
     final diesel0 =
         numberFor(['0', '0号柴油', '柴油0', 'diesel0', 'diesel_0', 'p0', '0#']);
-    if (gas92 == null || gas95 == null || gas98 == null || diesel0 == null) {
+    if (!_validFuelPrice(gas92) ||
+        !_validFuelPrice(gas95) ||
+        !_validFuelPrice(gas98) ||
+        !_validFuelPrice(diesel0)) {
       _lastErrorMessage = '接口成功但 data.prices 缺少 92/95/98/0 完整字段';
       return null;
     }
@@ -274,10 +286,10 @@ class ApiZeroFuelPriceService {
       province: normalizedProvince,
       price: ProvinceFuelPrice(
         province: normalizedProvince,
-        gas92: gas92,
-        gas95: gas95,
-        gas98: gas98,
-        diesel0: diesel0,
+        gas92: gas92!,
+        gas95: gas95!,
+        gas98: gas98!,
+        diesel0: diesel0!,
         lastChangeAmount: 0,
         lastChangeDate: priceDate,
       ),
@@ -295,5 +307,11 @@ class ApiZeroFuelPriceService {
     if (value is num) return value.toDouble();
     final match = RegExp(r'-?\d+(?:\.\d+)?').firstMatch('$value');
     return match == null ? null : double.tryParse(match.group(0)!);
+  }
+
+  static bool _isFresh(ApiZeroFuelPriceSnapshot? snapshot) {
+    if (snapshot == null) return false;
+    final age = DateTime.now().difference(snapshot.fetchedAt);
+    return !age.isNegative && age <= maximumCacheAge;
   }
 }

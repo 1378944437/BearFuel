@@ -13,4 +13,20 @@ void main() {
 
     expect(result, isFalse);
   });
+
+  test('备份字段类型错误时被拒绝', () async {
+    final result = await DatabaseHelper().restoreFullBackupData({
+      'app': 'BearFuel',
+      'vehicles': [
+        {
+          'id': 'car-1',
+          'name': 123,
+          'created_at': '2026-08-28T00:00:00.000',
+        },
+      ],
+      'refuel_records': [],
+    });
+
+    expect(result, isFalse);
+  });
 }

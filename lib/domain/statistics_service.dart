@@ -279,7 +279,7 @@ class StatisticsService {
     for (int s = startStage; s <= endStage; s++) {
       final double stageStartKm = s * 10000.0;
       final double stageEndKm = (s + 1) * 10000.0;
-      final stageLabel = '${s}万~${s + 1}万km';
+      final stageLabel = '$s万~${s + 1}万km';
 
       String phaseTitle;
       if (s == 0) {
@@ -397,7 +397,7 @@ class StatisticsService {
       final averageConsumption = consumption.fuel / consumption.distance * 100;
       result.add(
         TemperatureVsConsumptionPoint(
-          monthLabel: years.length > 1 ? '${year}年$month月' : '$month月',
+          monthLabel: years.length > 1 ? '$year年$month月' : '$month月',
           avgConsumption: double.parse(averageConsumption.toStringAsFixed(2)),
           estimatedTemperature: double.parse(averageTemp.toStringAsFixed(1)),
           refuelCount: consumption.recordCount,

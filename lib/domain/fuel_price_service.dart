@@ -20,9 +20,8 @@ class ProvinceFuelPrice {
     this.isAvailable = true,
   });
 
-  ProvinceFuelPrice.unavailable(String province)
-      : province = province,
-        gas92 = 0,
+  ProvinceFuelPrice.unavailable(this.province)
+      : gas92 = 0,
         gas95 = 0,
         gas98 = 0,
         diesel0 = 0,

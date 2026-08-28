@@ -397,13 +397,14 @@ class DashboardScreen extends StatelessWidget {
                     isDefault: vehicle.isDefault,
                     createdAt: vehicle.createdAt,
                   );
-                  await vehicleProv.updateVehicle(updated);
-                  if (ctx.mounted) Navigator.pop(ctx);
+                  final success = await vehicleProv.updateVehicle(updated);
+                  if (success && ctx.mounted) Navigator.pop(ctx);
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                          content: Text(
-                              '已更新【${vehicle.name}】表显里程为 ${val.toStringAsFixed(0)} km')),
+                          content: Text(success
+                              ? '已更新【${vehicle.name}】表显里程为 ${val.toStringAsFixed(0)} km'
+                              : '更新失败，请重试')),
                     );
                   }
                 }

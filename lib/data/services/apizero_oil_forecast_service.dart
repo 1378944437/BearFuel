@@ -87,7 +87,7 @@ class ApiZeroOilForecast {
       direction: direction,
       estimatedChangePerTon: _parseNumber(json['estimatedChangePerTon']),
       estimatedChangePerLiter: _parseNumber(json['estimatedChangePerLiter']),
-      analysis: json['analysis'] as String?,
+      analysis: json['analysis'] is String ? json['analysis'] as String : null,
       wti: _parseNumber(json['wti']),
       brent: _parseNumber(json['brent']),
       wtiChange: _parseNumber(json['wtiChange']),
@@ -181,6 +181,7 @@ class ApiZeroOilForecastResponse {
 class ApiZeroOilForecastService {
   static const Duration minimumRequestInterval = Duration(minutes: 30);
   static const Duration minimumManualRequestInterval = Duration(minutes: 1);
+  static const Duration maximumCacheAge = Duration(days: 2);
   static String? _lastErrorMessage;
 
   static String? get lastErrorMessage => _lastErrorMessage;
@@ -198,6 +199,7 @@ class ApiZeroOilForecastService {
       final prefs = await SharedPreferences.getInstance();
       final cacheKey = _cacheKey(province, year);
       final cached = _readCache(prefs.getString(cacheKey));
+      final usableCached = _isFresh(cached) ? cached : null;
       final forecast = await _fetchAction(
         prefs: prefs,
         cacheKey: cacheKey,
@@ -212,13 +214,13 @@ class ApiZeroOilForecastService {
         force: force,
         query: {'action': 'schedule', 'year': '$year'},
       );
-      if (forecast == null && schedule == null) return cached;
+      if (forecast == null && schedule == null) return usableCached;
 
       final parsedForecast = forecast == null ? null : _parseForecast(forecast);
       final parsedSchedule = schedule == null ? null : _parseSchedule(schedule);
       final response = ApiZeroOilForecastResponse(
-        forecast: parsedForecast ?? cached?.forecast,
-        schedule: parsedSchedule ?? (cached?.schedule ?? const []),
+        forecast: parsedForecast ?? usableCached?.forecast,
+        schedule: parsedSchedule ?? (usableCached?.schedule ?? const []),
         fetchedAt: DateTime.now(),
       );
       await prefs.setString(cacheKey, jsonEncode(response.toJson()));
@@ -306,7 +308,9 @@ class ApiZeroOilForecastService {
       estimatedChangePerTon: _number(prediction['estimated_change_per_ton']),
       estimatedChangePerLiter:
           _number(prediction['estimated_change_per_liter']),
-      analysis: prediction['analysis'] as String?,
+      analysis: prediction['analysis'] is String
+          ? prediction['analysis'] as String
+          : null,
       wti: crude is Map ? _number(crude['wti']) : null,
       brent: crude is Map ? _number(crude['brent']) : null,
       wtiChange: crude is Map ? _number(crude['wti_change']) : null,
@@ -346,6 +350,12 @@ class ApiZeroOilForecastService {
     } catch (_) {
       return null;
     }
+  }
+
+  static bool _isFresh(ApiZeroOilForecastResponse? response) {
+    if (response == null) return false;
+    final age = DateTime.now().difference(response.fetchedAt);
+    return !age.isNegative && age <= maximumCacheAge;
   }
 
   static double? _number(dynamic value) {

@@ -344,18 +344,18 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
   /// 启动底层硬件 GNSS/北斗卫星持续数据流监听（自动实时平滑校准）
   void _startContinuousGpsTracking() {
     try {
-      final settings = AndroidSettings(
+      const settings = LocationSettings(
         accuracy: LocationAccuracy.bestForNavigation,
         distanceFilter: 3,
-        forceLocationManager: true, // 强制原生底层硬件北斗/GPS芯片
-        intervalDuration: const Duration(milliseconds: 1000),
       );
       _positionStreamSub =
           Geolocator.getPositionStream(locationSettings: settings).listen(
         (Position pos) {
           if (!mounted) return;
-          if (_manualLocationOverride || !LocationService.isUsablePosition(pos))
+          if (_manualLocationOverride ||
+              !LocationService.isUsablePosition(pos)) {
             return;
+          }
           final nearest =
               LocationService.findNearestTownship(pos.latitude, pos.longitude);
           final urbanDist = LocationService.distanceToCityCenter(
@@ -720,8 +720,9 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                               isSel ? FontWeight.bold : FontWeight.normal,
                         ),
                         onSelected: (val) {
-                          if (val)
+                          if (val) {
                             setState(() => _selectedDistanceRange = dist);
+                          }
                         },
                       ),
                     );

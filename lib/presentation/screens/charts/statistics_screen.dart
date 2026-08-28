@@ -206,9 +206,9 @@ class _StatisticsScreenState extends State<StatisticsScreen>
               children: [
                 Row(
                   children: [
-                    Icon(AppIcons.filter_alt_outlined,
+                    const Icon(AppIcons.filter_alt_outlined,
                         size: 16, color: Color(0xFFFF5A24)),
-                    SizedBox(width: 4),
+                    const SizedBox(width: 4),
                     Text('统计周期:',
                         style: TextStyle(
                             fontSize: 12,
@@ -951,7 +951,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
           const SizedBox(height: 10),
           if (periodStats.isEmpty)
             Padding(
-              padding: EdgeInsets.symmetric(vertical: 20),
+              padding: const EdgeInsets.symmetric(vertical: 20),
               child: Center(
                   child: Text('暂无周期统计数据',
                       style: TextStyle(color: colors.onSurfaceVariant))),
@@ -1049,7 +1049,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
           const SizedBox(height: 10),
           if (stages.isEmpty)
             Padding(
-              padding: EdgeInsets.symmetric(vertical: 20),
+              padding: const EdgeInsets.symmetric(vertical: 20),
               child: Center(
                   child: Text('里程跨度不足 1 万公里，暂无阶段数据',
                       style: TextStyle(color: colors.onSurfaceVariant))),
@@ -1589,7 +1589,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                   Icon(AppIcons.check_circle_outline,
                       color: isDark ? Colors.green[300] : Colors.green[700],
                       size: 18),
-                  SizedBox(width: 6),
+                  const SizedBox(width: 6),
                   Text('全车能耗整体处于平稳受控范围，未检测到异常波动',
                       style: TextStyle(
                           color: colors.onSurfaceVariant, fontSize: 12)),

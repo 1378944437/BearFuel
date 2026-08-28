@@ -78,7 +78,8 @@ class ExpenseProvider extends ChangeNotifier {
   Future<bool> deleteExpense(String recordId,
       {double currentMaxMileage = 0.0}) async {
     try {
-      await _db.deleteExpenseRecord(recordId);
+      final count = await _db.deleteExpenseRecord(recordId);
+      if (count == 0) return false;
       if (_currentVehicleId != null) {
         await loadExpenses(_currentVehicleId!,
             currentMaxMileage: currentMaxMileage);

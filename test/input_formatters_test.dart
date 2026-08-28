@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter/services.dart';
 import 'package:bearfuel/core/utils/input_formatters.dart';
 
 void main() {

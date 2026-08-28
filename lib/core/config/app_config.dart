@@ -29,7 +29,9 @@ class AppConfig {
       isDevelopment ? 'bear_fuel_dev.db' : 'bear_fuel.db';
 
   /// 日志级别控制
-  static bool get enableDebugLog => isDevelopment;
+  // Keep diagnostic output available in release builds; failures otherwise
+  // become impossible to investigate on self-signed devices.
+  static bool get enableDebugLog => true;
 
   /// 默认货币符号
   static const String currencySymbol = '¥';
@@ -48,7 +50,7 @@ class AppConfig {
   /// 统一日志输出
   static void log(String message, {String tag = 'BearFuel'}) {
     if (enableDebugLog) {
-      // 仅在开发环境中打印详尽调试日志
+      // Release 也保留必要诊断日志，便于排查自签设备问题。
       print('[$tag][${DateTime.now().toIso8601String()}] $message');
     }
   }

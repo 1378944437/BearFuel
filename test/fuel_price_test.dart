@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:bearfuel/data/services/apizero_oil_forecast_service.dart';
+import 'package:bearfuel/data/services/apizero_fuel_price_service.dart';
 import 'package:bearfuel/domain/fuel_price_service.dart';
 
 void main() {
@@ -41,6 +42,20 @@ void main() {
       });
 
       expect(item?.summary, '汽油每吨上调685元\n柴油每吨上调655元');
+    });
+
+    test('油价缓存拒绝非正数', () {
+      final snapshot = ApiZeroFuelPriceSnapshot.fromJson({
+        'province': '北京',
+        'sourceUrl': 'https://example.com',
+        'fetchedAt': DateTime.now().millisecondsSinceEpoch,
+        'gas92': 0,
+        'gas95': 8.0,
+        'gas98': 9.0,
+        'diesel0': 7.0,
+      });
+
+      expect(snapshot, isNull);
     });
   });
 }

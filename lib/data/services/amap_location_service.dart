@@ -259,10 +259,12 @@ class AmapLocationService {
         name.toLowerCase().contains('cnooc')) {
       return '中国海油';
     }
-    if (name.contains('壳牌') || name.toLowerCase().contains('shell'))
+    if (name.contains('壳牌') || name.toLowerCase().contains('shell')) {
       return '壳牌';
-    if (name.contains('道达尔') || name.toLowerCase().contains('total'))
+    }
+    if (name.contains('道达尔') || name.toLowerCase().contains('total')) {
       return '道达尔';
+    }
     return '其他';
   }
 

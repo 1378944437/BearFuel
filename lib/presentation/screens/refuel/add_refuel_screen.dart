@@ -325,7 +325,7 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
                             color: colors.onSurfaceVariant
                                 .withValues(alpha: 0.75)),
                         suffixText: 'km',
-                        prefixIcon: Icon(AppIcons.speed),
+                        prefixIcon: const Icon(AppIcons.speed),
                       ),
                       validator: (val) => Validators.mileage(
                         val,
@@ -384,10 +384,10 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
+                    const Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
+                        Text(
                           '燃油数据（输入任意两项自动换算）',
                           style: TextStyle(
                               fontSize: 15, fontWeight: FontWeight.bold),
@@ -440,7 +440,7 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
                             color: colors.onSurfaceVariant
                                 .withValues(alpha: 0.75)),
                         suffixText: 'L',
-                        prefixIcon: Icon(AppIcons.local_gas_station),
+                        prefixIcon: const Icon(AppIcons.local_gas_station),
                       ),
                       onChanged: _onAmountChanged,
                       validator: (val) =>
@@ -464,7 +464,8 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
                                   color: colors.onSurfaceVariant
                                       .withValues(alpha: 0.75)),
                               suffixText: '¥/L',
-                              prefixIcon: Icon(AppIcons.price_change_outlined),
+                              prefixIcon:
+                                  const Icon(AppIcons.price_change_outlined),
                             ),
                             onChanged: _onUnitPriceChanged,
                             validator: (val) =>
@@ -488,7 +489,7 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
                                       .withValues(alpha: 0.75)),
                               suffixText: '¥',
                               prefixIcon:
-                                  Icon(AppIcons.monetization_on_outlined),
+                                  const Icon(AppIcons.monetization_on_outlined),
                             ),
                             onChanged: _onTotalPriceChanged,
                             validator: (val) => Validators.positiveNumber(val,
@@ -636,7 +637,7 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
                             fontSize: 11,
                             color: colors.onSurfaceVariant
                                 .withValues(alpha: 0.75)),
-                        prefixIcon: Icon(AppIcons.note_alt_outlined),
+                        prefixIcon: const Icon(AppIcons.note_alt_outlined),
                       ),
                     ),
                   ],

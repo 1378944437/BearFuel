@@ -126,7 +126,7 @@ class _LicensePlateInputFieldState extends State<LicensePlateInputField> {
               code = clean.substring(1);
             }
           }
-        } else if (clean.length >= 1 &&
+        } else if (clean.isNotEmpty &&
             RegExp(r'[A-Z]').hasMatch(clean.substring(0, 1))) {
           _selectedCityLetter = clean.substring(0, 1);
           if (clean.length > 1) {
@@ -360,7 +360,7 @@ class _LicensePlateInputFieldState extends State<LicensePlateInputField> {
               scale: 0.75,
               child: Switch(
                 value: _isNewEnergy,
-                activeColor: Colors.green,
+                activeThumbColor: Colors.green,
                 onChanged: (val) {
                   HapticFeedback.selectionClick();
                   setState(() {
@@ -510,7 +510,7 @@ class _LicensePlateInputFieldState extends State<LicensePlateInputField> {
                               setState(() {});
                             },
                             child: Padding(
-                              padding: EdgeInsets.only(right: 8),
+                              padding: const EdgeInsets.only(right: 8),
                               child: Icon(AppIcons.cancel,
                                   size: 16, color: colors.onSurfaceVariant),
                             ),

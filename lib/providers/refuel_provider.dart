@@ -24,7 +24,10 @@ class RefuelProvider extends ChangeNotifier {
   /// 获取最新一条记录的总里程（用于记账时作为基准里程校验与提示）
   double get latestMileage {
     if (_records.isEmpty) return 0.0;
-    return _records.last.mileage;
+    return _records.fold(
+      0.0,
+      (maximum, record) => record.mileage > maximum ? record.mileage : maximum,
+    );
   }
 
   /// 获取最近使用的加油标号
@@ -98,7 +101,8 @@ class RefuelProvider extends ChangeNotifier {
   /// 更新加油记录
   Future<bool> updateRecord(RefuelRecordModel record) async {
     try {
-      await _db.updateRefuelRecord(record);
+      final count = await _db.updateRefuelRecord(record);
+      if (count == 0) return false;
       if (_currentVehicleId != null) {
         await loadRecords(_currentVehicleId!);
       }
@@ -112,7 +116,8 @@ class RefuelProvider extends ChangeNotifier {
   /// 删除加油记录
   Future<bool> deleteRecord(String recordId) async {
     try {
-      await _db.deleteRefuelRecord(recordId);
+      final count = await _db.deleteRefuelRecord(recordId);
+      if (count == 0) return false;
       if (_currentVehicleId != null) {
         await loadRecords(_currentVehicleId!);
       }

@@ -64,12 +64,10 @@ class BearFuelImporter {
         content = utf8.decode(bytes);
       }
     } catch (_) {
-      // 3. 若非标准 UTF-8（如 Windows Excel 默认导出的 GBK/GB2312 编码），使用容错 latin1/转码
-      try {
-        content = const Utf8Decoder(allowMalformed: true).convert(bytes);
-      } catch (e) {
-        return ImportResult(success: false, errorMessage: '文件编码解析失败: $e');
-      }
+      return ImportResult(
+        success: false,
+        errorMessage: '文件不是 UTF-8 编码，请另存为 UTF-8 CSV 后再导入',
+      );
     }
 
     return parseCsv(content, vehicleId);

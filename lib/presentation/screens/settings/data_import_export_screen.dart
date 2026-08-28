@@ -189,14 +189,19 @@ class _DataImportExportScreenState extends State<DataImportExportScreen>
       if (success && mounted) {
         final vehicleProv = context.read<VehicleProvider>();
         await vehicleProv.loadVehicles();
-        if (vehicleProv.currentVehicle != null && mounted) {
-          final vId = vehicleProv.currentVehicle!.id;
+        if (!mounted) return;
+        final currentVehicle = vehicleProv.currentVehicle;
+        if (currentVehicle != null) {
+          final vId = currentVehicle.id;
           final refuelProv = context.read<RefuelProvider>();
+          final expenseProv = context.read<ExpenseProvider>();
           await refuelProv.loadRecords(vId);
-          await context.read<ExpenseProvider>().loadExpenses(
-                vId,
-                currentMaxMileage: refuelProv.latestMileage,
-              );
+          if (!mounted) return;
+          await expenseProv.loadExpenses(
+            vId,
+            currentMaxMileage: refuelProv.latestMileage,
+          );
+          if (!mounted) return;
         }
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

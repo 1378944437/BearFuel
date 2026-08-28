@@ -217,11 +217,11 @@ class _CityPickerSheetState extends State<CityPickerSheet> {
                   const SizedBox(width: 12),
                   TextButton(
                     onPressed: () => Navigator.pop(context),
-                    child: const Text('取消'),
                     style: TextButton.styleFrom(
                       foregroundColor: const Color(0xFFFF5A24),
                       padding: const EdgeInsets.symmetric(horizontal: 4),
                     ),
+                    child: const Text('取消'),
                   ),
                 ],
               ),

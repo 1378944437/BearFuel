@@ -1,5 +1,6 @@
 import 'package:bearfuel/core/theme/app_icons.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -787,20 +788,26 @@ class _RefuelRecordListView extends StatelessWidget {
         if (!matchStation && !matchNote && !matchFuel) return false;
       }
 
-      if (fuelTypeFilter != '全部' && !r.fuelType.contains(fuelTypeFilter))
+      if (fuelTypeFilter != '全部' && !r.fuelType.contains(fuelTypeFilter)) {
         return false;
+      }
       if (tankStatusFilter == '仅加满' && !r.isFullTank) return false;
       if (tankStatusFilter == '未加满' && r.isFullTank) return false;
       if (efficiencyFilter == '经济省油' &&
           (r.fuelConsumption == null ||
               avgConsumption <= 0 ||
-              r.fuelConsumption! > avgConsumption)) return false;
+              r.fuelConsumption! > avgConsumption)) {
+        return false;
+      }
       if (efficiencyFilter == '油耗偏高' &&
           (r.fuelConsumption == null ||
               avgConsumption <= 0 ||
-              r.fuelConsumption! <= avgConsumption)) return false;
-      if (onlyWithNotes && (r.note == null || r.note!.trim().isEmpty))
+              r.fuelConsumption! <= avgConsumption)) {
         return false;
+      }
+      if (onlyWithNotes && (r.note == null || r.note!.trim().isEmpty)) {
+        return false;
+      }
 
       return true;
     }).toList();
@@ -861,7 +868,7 @@ class _RefuelRecordListView extends StatelessWidget {
                   onTap: onDismissSwipeHint,
                   borderRadius: BorderRadius.circular(10),
                   child: Padding(
-                    padding: EdgeInsets.all(2.0),
+                    padding: const EdgeInsets.all(2.0),
                     child: Icon(AppIcons.close,
                         size: 14, color: colors.onSurfaceVariant),
                   ),
@@ -886,7 +893,7 @@ class _RefuelRecordListView extends StatelessWidget {
                 )
               : ListView.builder(
                   controller: scrollController,
-                  cacheExtent: 600.0,
+                  scrollCacheExtent: const ScrollCacheExtent.pixels(600),
                   padding: const EdgeInsets.only(top: 6, bottom: 24),
                   itemCount: monthlyGroups.keys.length,
                   itemBuilder: (context, groupIndex) {
@@ -963,6 +970,7 @@ class _RefuelRecordListView extends StatelessWidget {
                                   final success =
                                       await refuelProv.deleteRecord(r.id);
                                   if (!success) {
+                                    if (!context.mounted) return;
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(content: Text('删除失败，请重试')),
                                     );
@@ -1806,6 +1814,7 @@ class _ExpenseRecordListView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final expenseProv = context.watch<ExpenseProvider>();
+    final refuelProv = context.read<RefuelProvider>();
     final colors = Theme.of(context).colorScheme;
     final expenses = expenseProv.expenses;
 
@@ -1838,7 +1847,7 @@ class _ExpenseRecordListView extends StatelessWidget {
     }
 
     return ListView.builder(
-      cacheExtent: 600.0,
+      scrollCacheExtent: const ScrollCacheExtent.pixels(600),
       padding: const EdgeInsets.only(top: 8, bottom: 24),
       itemCount: expenses.length,
       itemBuilder: (context, index) {
@@ -1912,6 +1921,7 @@ class _ExpenseRecordListView extends StatelessWidget {
                   final deleted = e;
                   final success = await expenseProv.deleteExpense(e.id);
                   if (!success) {
+                    if (!context.mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('删除失败，请重试')),
                     );
@@ -1928,7 +1938,10 @@ class _ExpenseRecordListView extends StatelessWidget {
                           textColor: Colors.amberAccent,
                           onPressed: () async {
                             HapticFeedback.lightImpact();
-                            await expenseProv.addExpense(deleted);
+                            await expenseProv.addExpense(
+                              deleted,
+                              currentMaxMileage: refuelProv.latestMileage,
+                            );
                           },
                         ),
                       ),

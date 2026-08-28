@@ -10,6 +10,7 @@ class VehicleProvider extends ChangeNotifier {
   List<VehicleModel> _vehicles = [];
   VehicleModel? _currentVehicle;
   bool _isLoading = false;
+  Future<void> _selectionTail = Future<void>.value();
 
   List<VehicleModel> get vehicles => _vehicles;
   VehicleModel? get currentVehicle => _currentVehicle;
@@ -38,11 +39,18 @@ class VehicleProvider extends ChangeNotifier {
   }
 
   /// 切换当前选中的激活车辆
-  Future<bool> selectVehicle(VehicleModel vehicle) async {
+  Future<bool> selectVehicle(VehicleModel vehicle) {
+    final result = _selectionTail.then((_) => _selectVehicle(vehicle));
+    _selectionTail = result.then<void>((_) {}, onError: (_, __) {});
+    return result;
+  }
+
+  Future<bool> _selectVehicle(VehicleModel vehicle) async {
     if (_currentVehicle?.id == vehicle.id) return true;
 
     try {
-      await _db.setDefaultVehicle(vehicle.id);
+      final changed = await _db.setDefaultVehicle(vehicle.id);
+      if (!changed) return false;
       _currentVehicle = vehicle.copyWith(isDefault: true);
       // 更新列表中对应车辆的 isDefault 状态
       _vehicles = _vehicles
@@ -71,7 +79,8 @@ class VehicleProvider extends ChangeNotifier {
   /// 修改车辆信息
   Future<bool> updateVehicle(VehicleModel vehicle) async {
     try {
-      await _db.updateVehicle(vehicle);
+      final count = await _db.updateVehicle(vehicle);
+      if (count == 0) return false;
       await loadVehicles();
       return true;
     } catch (e) {
@@ -83,7 +92,8 @@ class VehicleProvider extends ChangeNotifier {
   /// 删除车辆
   Future<bool> deleteVehicle(String vehicleId) async {
     try {
-      await _db.deleteVehicle(vehicleId);
+      final count = await _db.deleteVehicle(vehicleId);
+      if (count == 0) return false;
       await loadVehicles();
       return true;
     } catch (e) {

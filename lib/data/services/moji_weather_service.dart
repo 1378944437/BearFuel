@@ -74,7 +74,7 @@ class MojiWeatherService {
           return MojiWeatherCity(
             id: '${raw['id'] ?? raw['city_id'] ?? ''}',
             name: '${raw['name'] ?? ''}',
-            province: raw['parent'] as String?,
+            province: _text(raw['parent']),
           );
         })
         .where((city) => city.id.isNotEmpty && city.name.isNotEmpty)
@@ -117,13 +117,13 @@ class MojiWeatherService {
     return WeatherSnapshotModel(
       cityKey: '${cityData['id'] ?? cityId ?? city ?? ''}',
       cityName: '${cityData['name'] ?? city ?? '当前位置'}',
-      province: cityData['parent'] as String?,
+      province: _text(cityData['parent']),
       snapshotDate: DateTime(now.year, now.month, now.day),
       temperature: temperature,
       tempHigh: today is Map ? _number(today['temp_day']) : null,
       tempLow: today is Map ? _number(today['temp_night']) : null,
-      condition: condition['condition'] as String?,
-      aqi: _int((data['aqi'] as Map?)?['value']),
+      condition: _text(condition['condition']),
+      aqi: _int(data['aqi'] is Map ? (data['aqi'] as Map)['value'] : null),
       source: 'apizero-moji-weather',
       fetchedAt: now,
     );
@@ -165,11 +165,11 @@ class MojiWeatherService {
           return WeatherSnapshotModel(
             cityKey: '${cityData['id'] ?? cityId ?? city ?? ''}',
             cityName: '${cityData['name'] ?? city ?? '未知城市'}',
-            province: cityData['parent'] as String?,
+            province: _text(cityData['parent']),
             snapshotDate: date,
             tempHigh: _number(raw['temp_high']),
             tempLow: _number(raw['temp_low']),
-            condition: raw['condition'] as String?,
+            condition: _text(raw['condition']),
             aqi: _int(raw['aqi_value']),
             source: 'apizero-moji-weather',
             fetchedAt: fetchedAt,
@@ -227,11 +227,16 @@ class MojiWeatherService {
 
   static double? _number(dynamic value) {
     if (value is num) return value.toDouble();
-    return double.tryParse('$value');
+    final match = RegExp(r'-?\d+(?:\.\d+)?').firstMatch('$value');
+    return match == null ? null : double.tryParse(match.group(0)!);
   }
 
   static int? _int(dynamic value) {
     if (value is int) return value;
-    return int.tryParse('$value');
+    final match = RegExp(r'-?\d+').firstMatch('$value');
+    return match == null ? null : int.tryParse(match.group(0)!);
   }
+
+  static String? _text(dynamic value) =>
+      value is String && value.trim().isNotEmpty ? value.trim() : null;
 }

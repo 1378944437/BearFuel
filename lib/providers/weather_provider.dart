@@ -18,6 +18,7 @@ class WeatherProvider extends ChangeNotifier {
   DateTime? _lastFetchedAt;
   UserLocation? _actualLocation;
   DateTime? _lastLocationCheckedAt;
+  static const _locationCheckInterval = Duration(minutes: 5);
 
   WeatherSnapshotModel? get current => _current;
   List<WeatherSnapshotModel> get snapshots => List.unmodifiable(_snapshots);
@@ -38,7 +39,7 @@ class WeatherProvider extends ChangeNotifier {
     if (trimmedCity.isEmpty) return;
     if (!force && trimmedCity == _requestKey && _lastFetchedAt != null) {
       final elapsed = DateTime.now().difference(_lastFetchedAt!);
-      if (!elapsed.isNegative && elapsed < const Duration(minutes: 30)) {
+      if (!elapsed.isNegative && elapsed < _locationCheckInterval) {
         return;
       }
     }
@@ -108,6 +109,8 @@ class WeatherProvider extends ChangeNotifier {
       _snapshots = await _db.getWeatherSnapshots(cityKey: cityId);
       _lastFetchedAt = DateTime.now();
       _statusText = '已读取墨迹天气，已保存 ${_snapshots.length} 天本地快照';
+    } catch (e) {
+      _statusText = '天气查询异常：$e';
     } finally {
       _isRefreshing = false;
       notifyListeners();

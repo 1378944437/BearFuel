@@ -129,7 +129,7 @@ class _CompactDateRangeDialogState extends State<CompactDateRangeDialog> {
                   onTap: () => Navigator.pop(context),
                   borderRadius: BorderRadius.circular(12),
                   child: Padding(
-                    padding: EdgeInsets.all(4.0),
+                    padding: const EdgeInsets.all(4.0),
                     child: Icon(AppIcons.close,
                         size: 18, color: colors.onSurfaceVariant),
                   ),
@@ -187,7 +187,7 @@ class _CompactDateRangeDialogState extends State<CompactDateRangeDialog> {
                     ),
                   ),
                   Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
                     child: Icon(AppIcons.arrow_forward,
                         size: 16, color: colors.onSurfaceVariant),
                   ),

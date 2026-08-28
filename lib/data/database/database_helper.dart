@@ -249,6 +249,7 @@ class DatabaseHelper {
       final maps = await db.query(
         'vehicles',
         where: 'is_default = 1',
+        orderBy: 'created_at ASC',
         limit: 1,
       );
       if (maps.isNotEmpty) {
@@ -256,7 +257,14 @@ class DatabaseHelper {
       }
       // 若无默认选中，取第一辆
       final all = await getVehicles();
-      return all.isNotEmpty ? all.first : null;
+      if (all.isEmpty) return null;
+      await db.update(
+        'vehicles',
+        {'is_default': 1},
+        where: 'id = ?',
+        whereArgs: [all.first.id],
+      );
+      return all.first.copyWith(isDefault: true);
     } catch (e) {
       AppConfig.log('获取默认车辆失败: $e');
       return null;
@@ -267,15 +275,16 @@ class DatabaseHelper {
   Future<int> insertVehicle(VehicleModel vehicle) async {
     try {
       final db = await database;
-      if (vehicle.isDefault) {
-        // 若设置为默认，取消其它车辆的默认标识
-        await db.rawUpdate('UPDATE vehicles SET is_default = 0');
-      }
-      final rowId = await db.insert(
-        'vehicles',
-        vehicle.toMap(),
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      final rowId = await db.transaction((txn) async {
+        if (vehicle.isDefault) {
+          await txn.rawUpdate('UPDATE vehicles SET is_default = 0');
+        }
+        return txn.insert(
+          'vehicles',
+          vehicle.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      });
       AppConfig.log(
         '成功写入车辆数据 [${vehicle.name}], id: ${vehicle.id}, rowId: $rowId',
       );
@@ -285,14 +294,16 @@ class DatabaseHelper {
       try {
         final db = await database;
         await _ensureTableSchema(db);
-        if (vehicle.isDefault) {
-          await db.rawUpdate('UPDATE vehicles SET is_default = 0');
-        }
-        return await db.insert(
-          'vehicles',
-          vehicle.toMap(),
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
+        return db.transaction((txn) async {
+          if (vehicle.isDefault) {
+            await txn.rawUpdate('UPDATE vehicles SET is_default = 0');
+          }
+          return txn.insert(
+            'vehicles',
+            vehicle.toMap(),
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        });
       } catch (retryError) {
         AppConfig.log('新增车辆重试失败: $retryError');
         rethrow;
@@ -304,16 +315,18 @@ class DatabaseHelper {
   Future<int> updateVehicle(VehicleModel vehicle) async {
     try {
       final db = await database;
-      if (vehicle.isDefault) {
-        await db.rawUpdate('UPDATE vehicles SET is_default = 0');
-      }
-      final count = await db.update(
-        'vehicles',
-        vehicle.toMap(),
-        where: 'id = ?',
-        whereArgs: [vehicle.id],
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      final count = await db.transaction((txn) async {
+        if (vehicle.isDefault) {
+          await txn.rawUpdate('UPDATE vehicles SET is_default = 0');
+        }
+        return txn.update(
+          'vehicles',
+          vehicle.toMap(),
+          where: 'id = ?',
+          whereArgs: [vehicle.id],
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      });
       AppConfig.log('成功更新车辆数据 [${vehicle.name}], count: $count');
       return count;
     } catch (e) {
@@ -321,16 +334,18 @@ class DatabaseHelper {
       try {
         final db = await database;
         await _ensureTableSchema(db);
-        if (vehicle.isDefault) {
-          await db.rawUpdate('UPDATE vehicles SET is_default = 0');
-        }
-        return await db.update(
-          'vehicles',
-          vehicle.toMap(),
-          where: 'id = ?',
-          whereArgs: [vehicle.id],
-          conflictAlgorithm: ConflictAlgorithm.replace,
-        );
+        return db.transaction((txn) async {
+          if (vehicle.isDefault) {
+            await txn.rawUpdate('UPDATE vehicles SET is_default = 0');
+          }
+          return txn.update(
+            'vehicles',
+            vehicle.toMap(),
+            where: 'id = ?',
+            whereArgs: [vehicle.id],
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        });
       } catch (retryError) {
         AppConfig.log('更新车辆重试失败: $retryError');
         rethrow;
@@ -339,13 +354,25 @@ class DatabaseHelper {
   }
 
   /// 设置激活/默认车辆
-  Future<void> setDefaultVehicle(String vehicleId) async {
+  Future<bool> setDefaultVehicle(String vehicleId) async {
     try {
       final db = await database;
-      await db.rawUpdate('UPDATE vehicles SET is_default = 0');
-      await db.rawUpdate('UPDATE vehicles SET is_default = 1 WHERE id = ?', [
-        vehicleId,
-      ]);
+      return db.transaction((txn) async {
+        final target = await txn.query(
+          'vehicles',
+          columns: ['id'],
+          where: 'id = ?',
+          whereArgs: [vehicleId],
+          limit: 1,
+        );
+        if (target.isEmpty) return false;
+        await txn.rawUpdate('UPDATE vehicles SET is_default = 0');
+        final count = await txn.rawUpdate(
+          'UPDATE vehicles SET is_default = 1 WHERE id = ?',
+          [vehicleId],
+        );
+        return count == 1;
+      });
     } catch (e) {
       AppConfig.log('设置默认车辆失败: $e');
       rethrow;
@@ -367,11 +394,36 @@ class DatabaseHelper {
           where: 'vehicle_id = ?',
           whereArgs: [vehicleId],
         );
-        return await txn.delete(
+        final deleted = await txn.delete(
           'vehicles',
           where: 'id = ?',
           whereArgs: [vehicleId],
         );
+        if (deleted > 0) {
+          final defaults = await txn.query(
+            'vehicles',
+            columns: ['id'],
+            where: 'is_default = 1',
+            limit: 1,
+          );
+          if (defaults.isEmpty) {
+            final next = await txn.query(
+              'vehicles',
+              columns: ['id'],
+              orderBy: 'created_at ASC',
+              limit: 1,
+            );
+            if (next.isNotEmpty) {
+              await txn.update(
+                'vehicles',
+                {'is_default': 1},
+                where: 'id = ?',
+                whereArgs: [next.first['id']],
+              );
+            }
+          }
+        }
+        return deleted;
       });
     } catch (e) {
       AppConfig.log('删除车辆失败: $e');
@@ -636,46 +688,122 @@ class DatabaseHelper {
 
   /// 从 JSON 备份全量恢复数据（采用单事务安全替换）
   Future<bool> restoreFullBackupData(Map<String, dynamic> backupData) async {
-    bool hasRequiredRows(
+    bool text(dynamic value) => value is String && value.trim().isNotEmpty;
+    bool date(dynamic value) =>
+        value is String && DateTime.tryParse(value) != null;
+    bool number(dynamic value, {required bool positive}) {
+      return value is num &&
+          value.isFinite &&
+          (positive ? value > 0 : value >= 0);
+    }
+
+    bool flag(dynamic value) => value is int && (value == 0 || value == 1);
+
+    bool validRows(
       dynamic value,
-      List<String> requiredKeys, {
+      bool Function(Map<String, dynamic>) validator, {
       bool allowEmpty = true,
     }) {
       if (value is! List || (!allowEmpty && value.isEmpty)) return false;
-      return value.every((row) {
+      for (final row in value) {
         if (row is! Map) return false;
-        return requiredKeys.every((key) => row[key] != null);
-      });
+        try {
+          if (!validator(Map<String, dynamic>.from(row))) return false;
+        } catch (_) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    final vehicleIds = <String>{};
+    final refuelIds = <String>{};
+    final expenseIds = <String>{};
+    final weatherIds = <String>{};
+    bool validVehicle(Map<String, dynamic> row) {
+      final id = row['id'];
+      if (!text(id) || !text(row['name']) || !date(row['created_at'])) {
+        return false;
+      }
+      if (!vehicleIds.add(id as String)) return false;
+      return (row['tank_capacity'] == null ||
+              number(row['tank_capacity'], positive: true)) &&
+          (row['initial_mileage'] == null ||
+              number(row['initial_mileage'], positive: false)) &&
+          (row['default_fuel_type'] == null ||
+              text(row['default_fuel_type'])) &&
+          (row['is_default'] == null || flag(row['is_default'])) &&
+          (row['plate_number'] == null || text(row['plate_number'])) &&
+          (row['brand'] == null || text(row['brand'])) &&
+          (row['model'] == null || text(row['model']));
+    }
+
+    bool validRefuel(Map<String, dynamic> row) {
+      if (!text(row['id']) || !refuelIds.add(row['id'] as String)) return false;
+      return text(row['vehicle_id']) &&
+          vehicleIds.contains(row['vehicle_id']) &&
+          date(row['refuel_date']) &&
+          number(row['mileage'], positive: false) &&
+          number(row['fuel_amount'], positive: true) &&
+          number(row['unit_price'], positive: true) &&
+          number(row['total_price'], positive: true) &&
+          text(row['fuel_type']) &&
+          flag(row['is_full_tank']) &&
+          flag(row['is_forgot_previous']) &&
+          date(row['created_at']) &&
+          (row['fuel_consumption'] == null ||
+              number(row['fuel_consumption'], positive: true)) &&
+          (row['cost_per_km'] == null ||
+              number(row['cost_per_km'], positive: true)) &&
+          (row['distance'] == null || number(row['distance'], positive: true));
+    }
+
+    bool validExpense(Map<String, dynamic> row) {
+      if (!text(row['id']) || !expenseIds.add(row['id'] as String)) {
+        return false;
+      }
+      return text(row['vehicle_id']) &&
+          vehicleIds.contains(row['vehicle_id']) &&
+          text(row['category']) &&
+          date(row['expense_date']) &&
+          number(row['amount'], positive: true) &&
+          date(row['created_at']) &&
+          (row['current_mileage'] == null ||
+              number(row['current_mileage'], positive: false)) &&
+          (row['next_reminder_mileage'] == null ||
+              number(row['next_reminder_mileage'], positive: true)) &&
+          (row['next_reminder_date'] == null ||
+              date(row['next_reminder_date'])) &&
+          (row['note'] == null || text(row['note']));
+    }
+
+    bool validWeather(Map<String, dynamic> row) {
+      if (!text(row['id']) || !weatherIds.add(row['id'] as String)) {
+        return false;
+      }
+      return text(row['city_key']) &&
+          text(row['city_name']) &&
+          date(row['snapshot_date']) &&
+          text(row['source']) &&
+          date(row['fetched_at']) &&
+          (row['temperature'] == null ||
+              number(row['temperature'], positive: false)) &&
+          (row['temp_high'] == null ||
+              number(row['temp_high'], positive: false)) &&
+          (row['temp_low'] == null ||
+              number(row['temp_low'], positive: false)) &&
+          (row['aqi'] == null || row['aqi'] is int);
     }
 
     // Validate before opening the replacement transaction. An empty or
     // malformed backup must never be allowed to clear the local database.
     final isValid = backupData['app'] == 'BearFuel' &&
-        hasRequiredRows(
-            backupData['vehicles'],
-            const [
-              'id',
-              'name',
-            ],
-            allowEmpty: false) &&
-        hasRequiredRows(backupData['refuel_records'], const [
-          'id',
-          'vehicle_id',
-        ]) &&
+        validRows(backupData['vehicles'], validVehicle, allowEmpty: false) &&
+        validRows(backupData['refuel_records'], validRefuel) &&
         (!backupData.containsKey('expense_records') ||
-            hasRequiredRows(backupData['expense_records'], const [
-              'id',
-              'vehicle_id',
-            ])) &&
+            validRows(backupData['expense_records'], validExpense)) &&
         (!backupData.containsKey('weather_snapshots') ||
-            hasRequiredRows(backupData['weather_snapshots'], const [
-              'id',
-              'city_key',
-              'city_name',
-              'snapshot_date',
-              'source',
-              'fetched_at',
-            ]));
+            validRows(backupData['weather_snapshots'], validWeather));
     if (!isValid) {
       AppConfig.log('全量数据恢复已拒绝：备份格式无效或不包含车辆数据');
       return false;
@@ -709,6 +837,24 @@ class DatabaseHelper {
             'vehicles',
             Map<String, dynamic>.from(v),
             conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        }
+
+        final defaults = await txn.query(
+          'vehicles',
+          columns: ['id'],
+          where: 'is_default = 1',
+          orderBy: 'created_at ASC',
+        );
+        if (defaults.length != 1) {
+          await txn.rawUpdate('UPDATE vehicles SET is_default = 0');
+          await txn.update(
+            'vehicles',
+            {'is_default': 1},
+            where: 'id = ?',
+            whereArgs: [
+              defaults.isNotEmpty ? defaults.first['id'] : vehicles.first['id']
+            ],
           );
         }
 

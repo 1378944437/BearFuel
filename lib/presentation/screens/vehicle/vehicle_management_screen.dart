@@ -195,8 +195,9 @@ class VehicleManagementScreen extends StatelessWidget {
                                     : FontWeight.normal,
                               ),
                               onSelected: (sel) {
-                                if (sel)
+                                if (sel) {
                                   setModalState(() => selectedFuel = fuel);
+                                }
                               },
                             );
                           }).toList(),
@@ -425,12 +426,19 @@ class VehicleManagementScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                     onTap: () async {
                       HapticFeedback.selectionClick();
+                      final refuelProv = context.read<RefuelProvider>();
+                      final expenseProv = context.read<ExpenseProvider>();
                       final success = await vehicleProv.selectVehicle(v);
                       // 切换关联数据
                       if (context.mounted) {
                         if (success) {
-                          context.read<RefuelProvider>().loadRecords(v.id);
-                          context.read<ExpenseProvider>().loadExpenses(v.id);
+                          await refuelProv.loadRecords(v.id);
+                          if (!context.mounted) return;
+                          await expenseProv.loadExpenses(
+                            v.id,
+                            currentMaxMileage: refuelProv.latestMileage,
+                          );
+                          if (!context.mounted) return;
                         }
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
@@ -598,6 +606,10 @@ class VehicleManagementScreen extends StatelessWidget {
                                       final wasCurrent =
                                           vehicleProv.currentVehicle?.id ==
                                               v.id;
+                                      final refuelProv =
+                                          context.read<RefuelProvider>();
+                                      final expenseProv =
+                                          context.read<ExpenseProvider>();
                                       final deleted =
                                           await vehicleProv.deleteVehicle(v.id);
                                       if (deleted &&
@@ -606,17 +618,13 @@ class VehicleManagementScreen extends StatelessWidget {
                                           vehicleProv.currentVehicle != null) {
                                         final next =
                                             vehicleProv.currentVehicle!;
-                                        await context
-                                            .read<RefuelProvider>()
-                                            .loadRecords(next.id);
-                                        await context
-                                            .read<ExpenseProvider>()
-                                            .loadExpenses(
-                                              next.id,
-                                              currentMaxMileage: context
-                                                  .read<RefuelProvider>()
-                                                  .latestMileage,
-                                            );
+                                        await refuelProv.loadRecords(next.id);
+                                        if (!context.mounted) return;
+                                        await expenseProv.loadExpenses(
+                                          next.id,
+                                          currentMaxMileage:
+                                              refuelProv.latestMileage,
+                                        );
                                       }
                                     }
                                   },

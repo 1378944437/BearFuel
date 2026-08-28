@@ -312,7 +312,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                         ),
                         Switch(
                           value: _enableReminder,
-                          activeColor: const Color(0xFFFF5A24),
+                          activeThumbColor: const Color(0xFFFF5A24),
                           onChanged: (val) =>
                               setState(() => _enableReminder = val),
                         ),
