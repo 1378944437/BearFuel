@@ -23,6 +23,7 @@ val signingStorePassword = keystoreProperties.getProperty("storePassword")
 // Keep local builds on arm64 by default; the release workflow overrides this
 // with all supported Android ABIs.
 val configuredAbis = project.findProperty("bearfuel.targetAbis")?.toString()
+val splitPerAbi = project.findProperty("split-per-abi") == "true"
 val targetAbis = configuredAbis
     ?.split(',')
     ?.map(String::trim)
@@ -49,9 +50,11 @@ android {
         versionName = flutter.versionName
         manifestPlaceholders["applicationName"] = "android.app.Application"
 
-        ndk {
-            abiFilters.clear()
-            abiFilters.addAll(targetAbis)
+        if (!splitPerAbi) {
+            ndk {
+                abiFilters.clear()
+                abiFilters.addAll(targetAbis)
+            }
         }
     }
 
