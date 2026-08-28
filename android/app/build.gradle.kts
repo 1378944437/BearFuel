@@ -1,0 +1,89 @@
+import java.io.FileInputStream
+import java.util.Properties
+
+plugins {
+    id("com.android.application")
+    id("dev.flutter.flutter-gradle-plugin")
+}
+
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+}
+val signingKeyAlias = keystoreProperties.getProperty("keyAlias")
+    ?: System.getenv("BEARFUEL_KEY_ALIAS")
+val signingKeyPassword = keystoreProperties.getProperty("keyPassword")
+    ?: System.getenv("BEARFUEL_KEY_PASSWORD")
+val signingStoreFile = keystoreProperties.getProperty("storeFile")
+    ?: System.getenv("BEARFUEL_KEYSTORE_PATH")
+val signingStorePassword = keystoreProperties.getProperty("storePassword")
+    ?: System.getenv("BEARFUEL_STORE_PASSWORD")
+
+// Keep only the current release ABI by default. Additional architectures can
+// be enabled later with -Pbearfuel.targetAbis=arm64-v8a,armeabi-v7a,x86_64.
+val configuredAbis = project.findProperty("bearfuel.targetAbis")?.toString()
+val targetAbis = configuredAbis
+    ?.split(',')
+    ?.map(String::trim)
+    ?.filter { it.isNotEmpty() }
+    ?.ifEmpty { listOf("arm64-v8a") }
+    ?: listOf("arm64-v8a")
+
+android {
+    namespace = "com.bearfuel.app"
+    compileSdk = 36
+    buildToolsVersion = "36.0.0"
+    ndkVersion = flutter.ndkVersion
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    defaultConfig {
+        applicationId = "com.bearfuel.app"
+        minSdk = flutter.minSdkVersion
+        targetSdk = 34
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+        manifestPlaceholders["applicationName"] = "android.app.Application"
+
+        ndk {
+            abiFilters.clear()
+            abiFilters.addAll(targetAbis)
+        }
+    }
+
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
+    }
+
+    signingConfigs {
+        create("release") {
+            keyAlias = signingKeyAlias
+            keyPassword = signingKeyPassword
+            storeFile = signingStoreFile?.let { file(it) }
+            storePassword = signingStorePassword
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = false
+            isShrinkResources = false
+        }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
+}
+
+flutter {
+    source = "../.."
+}

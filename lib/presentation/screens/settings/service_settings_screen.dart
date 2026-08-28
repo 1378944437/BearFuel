@@ -1,0 +1,198 @@
+import 'package:bearfuel/core/theme/app_icons.dart';
+import 'package:flutter/material.dart';
+
+import '../../../data/services/amap_location_service.dart';
+import '../../../data/services/fuel_price_api_config.dart';
+import '../../../data/services/weather_api_config.dart';
+import '../../widgets/custom_card.dart';
+import 'amap_key_settings_screen.dart';
+import 'data_import_export_screen.dart';
+import 'fuel_price_api_settings_screen.dart';
+import 'weather_api_settings_screen.dart';
+
+class ServiceSettingsScreen extends StatelessWidget {
+  const ServiceSettingsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('服务设置')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(0, 12, 0, 32),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('连接与数据',
+                    style: Theme.of(context).textTheme.headlineMedium),
+                const SizedBox(height: 6),
+                Text(
+                  '管理地图、油价、天气服务和本地数据。密钥仅保存在当前设备。',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+              ],
+            ),
+          ),
+          _ServiceTile(
+            index: '01',
+            icon: AppIcons.map_outlined,
+            color: const Color(0xFFFF5A24),
+            title: '地图服务',
+            subtitle: AmapLocationService.isConfigured
+                ? '高德服务已连接，可定位并查询附近加油站'
+                : '尚未配置高德 Key，地图选站不会显示站点',
+            configured: AmapLocationService.isConfigured,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const AmapKeySettingsScreen()),
+            ),
+          ),
+          _ServiceTile(
+            index: '02',
+            icon: AppIcons.local_gas_station_outlined,
+            color: const Color(0xFF007D83),
+            title: '实时油价服务',
+            subtitle: FuelPriceApiConfigStore.hasApiKey
+                ? 'ApiZero 个人 Key 已配置'
+                : '当前使用 ApiZero 匿名模式，可选配置个人 Key',
+            configured: FuelPriceApiConfigStore.hasApiKey,
+            optional: true,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => const FuelPriceApiSettingsScreen()),
+            ),
+          ),
+          _ServiceTile(
+            index: '03',
+            icon: AppIcons.cloud_outlined,
+            color: const Color(0xFF1D7A52),
+            title: '天气服务',
+            subtitle: WeatherApiConfigStore.hasApiKey
+                ? '墨迹天气个人 Key 已配置'
+                : '当前使用墨迹天气匿名模式，可选配置个人 Key',
+            configured: WeatherApiConfigStore.hasApiKey,
+            optional: true,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => const WeatherApiSettingsScreen()),
+            ),
+          ),
+          _ServiceTile(
+            index: '04',
+            icon: AppIcons.import_export,
+            color: const Color(0xFF6558D3),
+            title: '数据导入与备份',
+            subtitle: '导入历史账本，或导出全部本地数据进行备份',
+            configured: true,
+            statusLabel: '本地',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const DataImportExportScreen()),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ServiceTile extends StatelessWidget {
+  final String index;
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String subtitle;
+  final bool configured;
+  final bool optional;
+  final String? statusLabel;
+  final VoidCallback onTap;
+
+  const _ServiceTile({
+    required this.index,
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.subtitle,
+    required this.configured,
+    required this.onTap,
+    this.optional = false,
+    this.statusLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final status =
+        statusLabel ?? (configured ? '已连接' : (optional ? '匿名模式' : '待配置'));
+    return CustomCard(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      padding: EdgeInsets.zero,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(7),
+              ),
+              child: Icon(icon, color: color, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(index,
+                          style: Theme.of(context)
+                              .textTheme
+                              .labelSmall
+                              ?.copyWith(color: color)),
+                      const SizedBox(width: 7),
+                      Expanded(
+                        child: Text(title,
+                            style: Theme.of(context).textTheme.titleMedium),
+                      ),
+                      Text(
+                        status,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color:
+                                  configured || optional ? color : colors.error,
+                            ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(AppIcons.chevron_right,
+                size: 17, color: colors.onSurfaceVariant),
+          ],
+        ),
+      ),
+    );
+  }
+}
