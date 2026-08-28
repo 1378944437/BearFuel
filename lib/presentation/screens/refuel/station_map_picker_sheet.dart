@@ -303,12 +303,15 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
           final nearest = LocationService.findNearestTownship(
               lastPos.latitude, lastPos.longitude);
           final townName = nearest?.townName;
-          final distToUrban = LocationService.calculateDistanceKm(
-            lat1: lastPos.latitude,
-            lon1: lastPos.longitude,
-            lat2: 31.0354,
-            lon2: 112.2043,
+          final displayCity = nearest?.cityName ?? _currentCity;
+          final distToUrban = LocationService.distanceToCityCenter(
+            lastPos.latitude,
+            lastPos.longitude,
+            displayCity,
           );
+          final distText = distToUrban > 0
+              ? ' (距市中心 ${distToUrban.toStringAsFixed(1)}km)'
+              : '';
           setState(() {
             _currentGpsLocation = UserLocation(
               latitude: lastPos.latitude,
@@ -321,8 +324,7 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                   '当前位置 (${lastPos.latitude.toStringAsFixed(4)}, ${lastPos.longitude.toStringAsFixed(4)})',
               source: LocationSource.cachedLocation,
             );
-            _gpsStatusText =
-                '锁定已知位置 · ${townName ?? _currentCity} (距市中心 ${distToUrban.toStringAsFixed(1)}km)';
+            _gpsStatusText = '锁定已知位置 · ${townName ?? displayCity}$distText';
           });
         }
       }
@@ -1120,11 +1122,10 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
   void _selectTownship(TownshipAnchor t) {
     HapticFeedback.selectionClick();
     _locationRequestId++;
-    final distToUrban = LocationService.calculateDistanceKm(
-      lat1: t.latitude,
-      lon1: t.longitude,
-      lat2: 31.0354,
-      lon2: 112.2043,
+    final distToUrban = LocationService.distanceToCityCenter(
+      t.latitude,
+      t.longitude,
+      t.cityName,
     );
     final newLoc = UserLocation(
       latitude: t.latitude,
@@ -1256,11 +1257,11 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                       itemCount: towns.length,
                       itemBuilder: (ctx, i) {
                         final t = towns[i];
-                        final distToUrban = LocationService.calculateDistanceKm(
-                          lat1: t.latitude,
-                          lon1: t.longitude,
-                          lat2: 31.0354,
-                          lon2: 112.2043,
+                        final distToUrban =
+                            LocationService.distanceToCityCenter(
+                          t.latitude,
+                          t.longitude,
+                          t.cityName,
                         );
                         return ListTile(
                           contentPadding: const EdgeInsets.symmetric(

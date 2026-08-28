@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/config/app_config.dart';
 import '../../domain/fuel_price_service.dart';
 import 'fuel_price_api_config.dart';
 
@@ -185,8 +186,8 @@ class ApiZeroFuelPriceService {
       client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
       final request = await client.getUrl(endpoint);
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      request.headers
-          .set(HttpHeaders.userAgentHeader, 'BearFuel/0.2.5 (personal use)');
+      request.headers.set(HttpHeaders.userAgentHeader,
+          'BearFuel/${AppConfig.versionName} (personal use)');
 
       final effectiveKey = apiKey ?? FuelPriceApiConfigStore.apiKey;
       if (effectiveKey.isNotEmpty) {

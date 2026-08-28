@@ -458,7 +458,8 @@ class LocationService {
         'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=$lat&lon=$lon&accept-language=zh-CN',
       );
       final req = await client.getUrl(uri);
-      req.headers.set('User-Agent', 'BearFuel/0.2.5 (support@bearfuel.app)');
+      req.headers.set('User-Agent',
+          'BearFuel/${AppConfig.versionName} (support@bearfuel.app)');
       final res = await req.close().timeout(const Duration(seconds: 2));
 
       if (res.statusCode == 200) {
@@ -885,7 +886,7 @@ class LocationService {
 
   /// 根据经纬度识别最近的地级市
   static String detectCityFromCoordinates(double lat, double lon) {
-    String closestCity = '北京';
+    String closestCity = cityAnchors.keys.first;
     double minDistance = double.infinity;
 
     cityAnchors.forEach((city, coords) {

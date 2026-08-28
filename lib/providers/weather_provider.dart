@@ -60,15 +60,29 @@ class WeatherProvider extends ChangeNotifier {
       }
 
       final normalizedQuery = _normalizeCityName(trimmedCity);
-      final matchedCity = cities.firstWhere(
-        (candidate) => _normalizeCityName(candidate.name) == normalizedQuery,
-        orElse: () => cities.first,
-      );
+      MojiWeatherCity? matchedCity;
+      for (final candidate in cities) {
+        if (_normalizeCityName(candidate.name) == normalizedQuery) {
+          matchedCity = candidate;
+          break;
+        }
+      }
+      if (matchedCity == null) {
+        _statusText = '天气查询失败：未找到与“$trimmedCity”精确匹配的城市';
+        return;
+      }
       final cityId = matchedCity.id;
+      final cachedSnapshots = await _db.getWeatherSnapshots(cityKey: cityId);
+      if (cachedSnapshots.isNotEmpty) {
+        _snapshots = cachedSnapshots;
+        _current = cachedSnapshots.last;
+        notifyListeners();
+      }
       final current = await MojiWeatherService.fetchCurrent(cityId: cityId);
       if (current == null) {
-        _statusText =
-            '天气查询失败：${MojiWeatherService.lastErrorMessage ?? '未返回实况数据'}';
+        _statusText = cachedSnapshots.isEmpty
+            ? '天气查询失败：${MojiWeatherService.lastErrorMessage ?? '未返回实况数据'}'
+            : '在线天气读取失败，当前显示本地 ${cachedSnapshots.length} 天快照';
         return;
       }
       _current = current;

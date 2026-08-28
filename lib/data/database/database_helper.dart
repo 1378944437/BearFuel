@@ -467,6 +467,7 @@ class DatabaseHelper {
       await batch.commit(noResult: true);
     } catch (e) {
       AppConfig.log('批量更新加油计算失败: $e');
+      rethrow;
     }
   }
 
@@ -594,7 +595,7 @@ class DatabaseHelper {
 
     return {
       'app': 'BearFuel',
-      'version': '0.2.5',
+      'version': AppConfig.versionName,
       'export_time': DateTime.now().toIso8601String(),
       'vehicles': vehicles,
       'refuel_records': refuels,

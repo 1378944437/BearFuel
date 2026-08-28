@@ -760,20 +760,21 @@ class _RefuelRecordListView extends StatelessWidget {
     final timeFiltered = allRecords.where((r) {
       final age = now.difference(r.refuelDate);
       if (age.isNegative) return false;
+      Duration? maxAge;
       if (timeRange == '近1天') {
-        return age.inDays <= 1;
+        maxAge = const Duration(days: 1);
       } else if (timeRange == '近1周') {
-        return age.inDays <= 7;
+        maxAge = const Duration(days: 7);
       } else if (timeRange == '近1月 (近30天)') {
-        return age.inDays <= 30;
+        maxAge = const Duration(days: 30);
       } else if (timeRange == '近半年') {
-        return age.inDays <= 183;
+        maxAge = const Duration(days: 183);
       } else if (timeRange == '近1年') {
-        return age.inDays <= 365;
+        maxAge = const Duration(days: 365);
       } else if (timeRange == '今年') {
         return r.refuelDate.year == now.year;
       }
-      return true;
+      return maxAge == null || !r.refuelDate.isBefore(now.subtract(maxAge));
     }).toList();
 
     // 2. 根据综合筛选与搜索过滤

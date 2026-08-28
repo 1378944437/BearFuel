@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../models/weather_snapshot_model.dart';
+import '../../core/config/app_config.dart';
 import 'weather_api_config.dart';
 
 class MojiWeatherCity {
@@ -189,8 +190,8 @@ class MojiWeatherService {
       client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
       final request = await client.getUrl(uri);
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      request.headers
-          .set(HttpHeaders.userAgentHeader, 'BearFuel/0.2.5 (personal use)');
+      request.headers.set(HttpHeaders.userAgentHeader,
+          'BearFuel/${AppConfig.versionName} (personal use)');
       final effectiveKey = apiKey ?? WeatherApiConfigStore.apiKey;
       if (effectiveKey.isNotEmpty) {
         request.headers

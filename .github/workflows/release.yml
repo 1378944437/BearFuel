@@ -66,20 +66,7 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Restore release signing
-        shell: bash
-        env:
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-        run: |
-          test -n "$KEYSTORE_BASE64"
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/bearfuel-release.jks"
-
-      - name: Build signed split Android APKs
-        env:
-          BEARFUEL_KEYSTORE_PATH: ${{ runner.temp }}/bearfuel-release.jks
-          BEARFUEL_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          BEARFUEL_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          BEARFUEL_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+      - name: Build unsigned split Android APKs
         run: >-
           flutter build apk --release --no-pub
           --target-platform android-arm,android-arm64,android-x64

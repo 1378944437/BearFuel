@@ -184,8 +184,11 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
     final isLoading = fuelProv.priceStatusText.startsWith('正在');
     final accent = isOnlineApi ? colors.secondary : colors.primary;
     final fetchedAt = fuelProv.priceFetchedAt;
-    final source =
-        isOnlineApi ? 'ApiZero 当前省级油价接口' : 'ApiZero 当前省级油价接口（暂未返回数据）';
+    final isCached = fetchedAt != null &&
+        DateTime.now().difference(fetchedAt) > const Duration(minutes: 30);
+    final source = isOnlineApi
+        ? 'ApiZero 当前省级油价接口${isCached ? '（本地缓存）' : ''}'
+        : 'ApiZero 当前省级油价接口（暂未返回数据）';
     final readTime = isLoading
         ? '读取时间：读取中'
         : '读取时间：${fetchedAt == null ? '--' : DateFormatter.formatYmdHm(fetchedAt)}';
