@@ -13,7 +13,35 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Verify release tag
+        shell: bash
+        run: |
+          APP_VERSION="$(awk '/^version:/{print $2}' pubspec.yaml)"
+          VERSION_NAME="${APP_VERSION%%+*}"
+          test "v${VERSION_NAME}" = "${GITHUB_REF_NAME}"
+          echo "VERSION_NAME=${VERSION_NAME}" >> "$GITHUB_ENV"
+
+      - name: Create draft GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" \
+              --draft \
+              --title "BearFuel ${VERSION_NAME}" \
+              --generate-notes
+          fi
+
   android:
+    needs: create-release
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -38,14 +66,6 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Verify release tag
-        shell: bash
-        run: |
-          APP_VERSION="$(awk '/^version:/{print $2}' pubspec.yaml)"
-          VERSION_NAME="${APP_VERSION%%+*}"
-          test "v${VERSION_NAME}" = "${GITHUB_REF_NAME}"
-          echo "VERSION_NAME=${VERSION_NAME}" >> "$GITHUB_ENV"
-
       - name: Restore release signing
         shell: bash
         env:
@@ -54,27 +74,79 @@ jobs:
           test -n "$KEYSTORE_BASE64"
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/bearfuel-release.jks"
 
-      - name: Build signed arm64 APK
+      - name: Build signed all-architecture Android APK
         env:
           BEARFUEL_KEYSTORE_PATH: ${{ runner.temp }}/bearfuel-release.jks
           BEARFUEL_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           BEARFUEL_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           BEARFUEL_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
-        run: flutter build apk --release --no-pub --target-platform android-arm64
+        run: >-
+          flutter build apk --release --no-pub
+          --target-platform android-arm,android-arm64,android-x64
+          -Pbearfuel.targetAbis=armeabi-v7a,arm64-v8a,x86_64
 
-      - name: Prepare release files
+      - name: Prepare Android release files
         shell: bash
         run: |
-          APK="BearFuel-v${VERSION_NAME}-arm64-v8a-release.apk"
+          APK="BearFuel-v${GITHUB_REF_NAME#v}-android-all-arch-release.apk"
           cp build/app/outputs/flutter-apk/app-release.apk "$APK"
           sha256sum "$APK" > "${APK}.sha256"
           echo "APK=$APK" >> "$GITHUB_ENV"
 
+      - name: Upload Android release files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" "$APK" "$APK.sha256" --clobber
+
+  ios:
+    needs: create-release
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.3'
+          channel: stable
+          cache: true
+
+      - name: Disable Swift Package Manager
+        run: flutter config --no-enable-swift-package-manager
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build unsigned iOS app
+        run: flutter build ios --release --no-codesign --no-pub
+
+      - name: Package unsigned iOS IPA
+        shell: bash
+        run: |
+          rm -rf Payload
+          mkdir Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/
+          IPA="BearFuel-v${GITHUB_REF_NAME#v}-ios-unsigned.ipa"
+          zip -qry "$IPA" Payload
+          shasum -a 256 "$IPA" > "${IPA}.sha256"
+          echo "IPA=$IPA" >> "$GITHUB_ENV"
+
+      - name: Upload iOS release files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" "$IPA" "$IPA.sha256" --clobber
+
+  publish:
+    needs: [android, ios]
+    if: ${{ needs.android.result == 'success' && needs.ios.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >-
-          gh release create "$GITHUB_REF_NAME"
-          "$APK" "$APK.sha256"
-          --title "BearFuel ${VERSION_NAME}"
-          --generate-notes
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false

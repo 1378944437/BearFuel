@@ -158,21 +158,16 @@ await refuelProv.addRecord(newRecord);
    ```
 6. **打包生产环境安装包 (Release)**：
    ```bash
-   # 当前仅打包 arm64-v8a（适用于主流 64 位 Android 设备）
-   flutter build apk --release --target-platform android-arm64 --split-per-abi
+   # Android 全架构 APK（armeabi-v7a、arm64-v8a、x86_64）
+   flutter build apk --release --target-platform android-arm,android-arm64,android-x64 \
+     -Pbearfuel.targetAbis=armeabi-v7a,arm64-v8a,x86_64
 
-   # 后续需要其他架构时，显式传入需要的 ABI
-   flutter build apk --release --split-per-abi -Pbearfuel.targetAbis=arm64-v8a,armeabi-v7a,x86_64
-
-   # 或按架构分别生成 APK
-   flutter build apk --release --split-per-abi
-
-   # 打包 Windows 桌面程序
-   flutter build windows --release
+   # iOS 未签名 IPA（需自签名或 TrollStore 后使用）
+   flutter build ios --release --no-codesign
    ```
 
-#### 包名变更说明
-当前 Android 应用标识为 `com.bearfuel.app`，版本为 `0.2.5+16`。当前发布包仅包含 `arm64-v8a`；由于应用标识变更，旧版 APK 不能直接覆盖安装，也不会自动共享旧版沙盒数据。升级时请先在旧版“数据导入与备份中心”导出全量 JSON，再在 BearFuel 中恢复。
+#### 发布产物
+Release 仅生成 Android 全架构 APK 和 iOS 未签名 IPA。iOS 产物不包含 Apple 开发者证书，需使用自签名或 TrollStore 处理后安装。
 
 #### 工程与发布约定
 
@@ -180,7 +175,7 @@ await refuelProv.addRecord(newRecord);
 - `pubspec.yaml` 是版本名称和 Android build number 的唯一来源。
 - `main` 为稳定分支；功能和修复使用短期分支，经 CI 通过后合并。
 - 发布时先更新 `CHANGELOG.md` 和 `pubspec.yaml`，再创建 `vX.Y.Z` Tag。
-- Tag 会触发 `.github/workflows/release.yml`，构建并发布正式签名的 arm64-v8a APK。
+- Tag 会触发 `.github/workflows/release.yml`，构建并发布 Android 全架构 APK 和 iOS 未签名 IPA。
 - Release Keystore、`android/key.properties`、个人 API Key、APK 和个人账本数据禁止提交。
 
 GitHub Release 工作流需要以下仓库 Secrets：
@@ -190,9 +185,9 @@ GitHub Release 工作流需要以下仓库 Secrets：
 - `ANDROID_KEY_PASSWORD`
 - `ANDROID_STORE_PASSWORD`
 
-当前 `0.2.5+16` 之前的安装包使用 debug 签名。第一次安装正式签名版本前，应导出全量 JSON、卸载旧版、安装正式版并恢复数据；此后必须始终使用同一 Release Keystore 才能覆盖升级。
+#### 签名说明
+Android Release 使用固定的 BearFuel Release Keystore；iOS 发布包为未签名 IPA，需自行完成签名或通过 TrollStore 安装。
 
-#### 常见报错与排查指南
 1. **`Target file "lib/main.dart" not found`**：确认当前终端位于项目根目录下执行命令。
 2. **SQLite 数据库只读或权限报错**：`sqflite` 自动在各端应用专属沙盒路径中建立数据库文件（开发环境为 `bear_fuel_dev.db`，生产环境为 `bear_fuel.db`），无需手动申请额外存储权限。
 3. **中文显示方块/乱码**：本工程已配置 `flutter_localizations` 并使用 Material Design 标准无衬线字体，在各平台原生正常渲染。

@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../providers/vehicle_provider.dart';
 import '../../providers/refuel_provider.dart';
 import '../../providers/expense_provider.dart';
@@ -45,32 +44,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               currentMaxMileage: refuelProv.latestMileage);
         }
       }
-      await _showPackageMigrationNotice();
     });
-  }
-
-  Future<void> _showPackageMigrationNotice() async {
-    const noticeKey = 'bearfuel_package_migration_notice_seen';
-    final prefs = await SharedPreferences.getInstance();
-    if (prefs.getBool(noticeKey) == true || !mounted) return;
-
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('BearFuel 首次运行'),
-        content: const Text(
-          'BearFuel 已更换应用标识，旧版应用不会自动覆盖本应用或共享本地数据。\n\n'
-          '如需保留旧数据，请先在旧版进入“数据导入与备份中心”导出全量 JSON，再在本应用中选择该文件恢复。',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('知道了'),
-          ),
-        ],
-      ),
-    );
-    await prefs.setBool(noticeKey, true);
   }
 
   @override
