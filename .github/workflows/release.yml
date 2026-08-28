@@ -74,7 +74,7 @@ jobs:
           test -n "$KEYSTORE_BASE64"
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/bearfuel-release.jks"
 
-      - name: Build signed all-architecture Android APK
+      - name: Build signed split Android APKs
         env:
           BEARFUEL_KEYSTORE_PATH: ${{ runner.temp }}/bearfuel-release.jks
           BEARFUEL_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -84,19 +84,23 @@ jobs:
           flutter build apk --release --no-pub
           --target-platform android-arm,android-arm64,android-x64
           -Pbearfuel.targetAbis=armeabi-v7a,arm64-v8a,x86_64
+          --split-per-abi
 
-      - name: Prepare Android release files
+      - name: Prepare split Android release files
         shell: bash
         run: |
-          APK="BearFuel-v${GITHUB_REF_NAME#v}-android-all-arch-release.apk"
-          cp build/app/outputs/flutter-apk/app-release.apk "$APK"
-          sha256sum "$APK" > "${APK}.sha256"
-          echo "APK=$APK" >> "$GITHUB_ENV"
+          for ABI in armeabi-v7a arm64-v8a x86_64; do
+            SOURCE="build/app/outputs/flutter-apk/app-${ABI}-release.apk"
+            APK="BearFuel-v${GITHUB_REF_NAME#v}-android-${ABI}-release.apk"
+            test -f "$SOURCE"
+            cp "$SOURCE" "$APK"
+            sha256sum "$APK" > "${APK}.sha256"
+          done
 
-      - name: Upload Android release files
+      - name: Upload split Android release files
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" "$APK" "$APK.sha256" --clobber
+        run: gh release upload "$GITHUB_REF_NAME" BearFuel-v${GITHUB_REF_NAME#v}-android-*-release.apk BearFuel-v${GITHUB_REF_NAME#v}-android-*-release.apk.sha256 --clobber
 
   ios:
     needs: create-release

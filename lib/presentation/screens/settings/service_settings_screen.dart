@@ -16,7 +16,7 @@ class ServiceSettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('服务设置')),
+      appBar: AppBar(title: const Text('设置')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(0, 12, 0, 32),
         children: [
@@ -29,13 +29,17 @@ class ServiceSettingsScreen extends StatelessWidget {
                     style: Theme.of(context).textTheme.headlineMedium),
                 const SizedBox(height: 6),
                 Text(
-                  '管理地图、油价、天气服务和本地数据。密钥仅保存在当前设备。',
+                  '管理服务连接与本地数据。密钥仅保存在当前设备。',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                 ),
               ],
             ),
+          ),
+          const _SettingsSectionHeader(
+            icon: AppIcons.network_check_outlined,
+            title: '服务',
           ),
           _ServiceTile(
             index: '01',
@@ -83,8 +87,12 @@ class ServiceSettingsScreen extends StatelessWidget {
                   builder: (_) => const WeatherApiSettingsScreen()),
             ),
           ),
+          const _SettingsSectionHeader(
+            icon: AppIcons.backup_outlined,
+            title: '备份',
+          ),
           _ServiceTile(
-            index: '04',
+            index: '01',
             icon: AppIcons.import_export,
             color: const Color(0xFF6558D3),
             title: '数据导入与备份',
@@ -96,6 +104,30 @@ class ServiceSettingsScreen extends StatelessWidget {
               MaterialPageRoute(builder: (_) => const DataImportExportScreen()),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsSectionHeader extends StatelessWidget {
+  final IconData icon;
+  final String title;
+
+  const _SettingsSectionHeader({required this.icon, required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: colors.primary),
+          const SizedBox(width: 8),
+          Text(title, style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(width: 12),
+          Expanded(child: Divider(color: colors.outlineVariant)),
         ],
       ),
     );

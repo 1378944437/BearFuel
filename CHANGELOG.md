@@ -9,6 +9,12 @@ published APK.
 - Removed the first-run application identifier migration notice.
 - Raised Android version to `0.2.6+17`.
 
+## [0.2.7] - 2026-08-28
+
+- Published separate Android APKs for `armeabi-v7a`, `arm64-v8a`, and `x86_64`.
+- Divided settings into service and backup sections.
+- Raised Android version to `0.2.7+18`.
+
 ## [0.2.5] - 2026-08-28
 
 - Rebuilt the application UI around a shared light and dark design system.

@@ -158,16 +158,16 @@ await refuelProv.addRecord(newRecord);
    ```
 6. **打包生产环境安装包 (Release)**：
    ```bash
-   # Android 全架构 APK（armeabi-v7a、arm64-v8a、x86_64）
+   # Android 分架构 APK（分别生成 armeabi-v7a、arm64-v8a、x86_64）
    flutter build apk --release --target-platform android-arm,android-arm64,android-x64 \
-     -Pbearfuel.targetAbis=armeabi-v7a,arm64-v8a,x86_64
+     -Pbearfuel.targetAbis=armeabi-v7a,arm64-v8a,x86_64 --split-per-abi
 
    # iOS 未签名 IPA（需自签名或 TrollStore 后使用）
    flutter build ios --release --no-codesign
    ```
 
 #### 发布产物
-Release 仅生成 Android 全架构 APK 和 iOS 未签名 IPA。iOS 产物不包含 Apple 开发者证书，需使用自签名或 TrollStore 处理后安装。
+Release 生成按架构拆分的 Android APK 和 iOS 未签名 IPA。iOS 产物不包含 Apple 开发者证书，需使用自签名或 TrollStore 处理后安装。
 
 #### 工程与发布约定
 
@@ -175,7 +175,7 @@ Release 仅生成 Android 全架构 APK 和 iOS 未签名 IPA。iOS 产物不包
 - `pubspec.yaml` 是版本名称和 Android build number 的唯一来源。
 - `main` 为稳定分支；功能和修复使用短期分支，经 CI 通过后合并。
 - 发布时先更新 `CHANGELOG.md` 和 `pubspec.yaml`，再创建 `vX.Y.Z` Tag。
-- Tag 会触发 `.github/workflows/release.yml`，构建并发布 Android 全架构 APK 和 iOS 未签名 IPA。
+- Tag 会触发 `.github/workflows/release.yml`，构建并发布分架构 Android APK 和 iOS 未签名 IPA。
 - Release Keystore、`android/key.properties`、个人 API Key、APK 和个人账本数据禁止提交。
 
 GitHub Release 工作流需要以下仓库 Secrets：
