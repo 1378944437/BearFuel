@@ -20,8 +20,8 @@ val signingStoreFile = keystoreProperties.getProperty("storeFile")
 val signingStorePassword = keystoreProperties.getProperty("storePassword")
     ?: System.getenv("BEARFUEL_STORE_PASSWORD")
 
-// Keep only the current release ABI by default. Additional architectures can
-// be enabled later with -Pbearfuel.targetAbis=arm64-v8a,armeabi-v7a,x86_64.
+// Keep local builds on arm64 by default; the release workflow overrides this
+// with all supported Android ABIs.
 val configuredAbis = project.findProperty("bearfuel.targetAbis")?.toString()
 val targetAbis = configuredAbis
     ?.split(',')
