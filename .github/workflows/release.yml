@@ -97,14 +97,6 @@ jobs:
           -Pbearfuel.targetAbis=armeabi-v7a,arm64-v8a,x86_64
           --split-per-abi
 
-      - name: Upload Android debug symbols
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-debug-symbols
-          path: build/symbols/android
-          retention-days: 90
-          if-no-files-found: ignore
-
       - name: Prepare split Android release files
         shell: bash
         run: |
@@ -154,14 +146,6 @@ jobs:
           flutter build ios --release --no-codesign --no-pub \
             --dart-define=APP_VERSION="$VERSION_NAME" \
             --obfuscate --split-debug-info=build/symbols/ios
-
-      - name: Upload iOS debug symbols
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios-debug-symbols
-          path: build/symbols/ios
-          retention-days: 90
-          if-no-files-found: ignore
 
       - name: Package unsigned iOS IPA
         shell: bash
