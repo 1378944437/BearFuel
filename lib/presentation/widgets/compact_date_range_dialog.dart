@@ -1,4 +1,5 @@
 import 'package:bearfuel/core/theme/app_icons.dart';
+import '../../core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/utils/date_formatter.dart';
@@ -80,7 +81,7 @@ class _CompactDateRangeDialogState extends State<CompactDateRangeDialog> {
       confirmText: '确定',
     );
 
-    if (picked != null) {
+    if (picked != null && mounted) {
       setState(() {
         if (isStart) {
           _startDate = picked;
@@ -115,13 +116,18 @@ class _CompactDateRangeDialogState extends State<CompactDateRangeDialog> {
               children: [
                 const Row(
                   children: [
-                    Icon(AppIcons.date_range,
-                        color: Color(0xFFFF5A24), size: 20),
+                    Icon(
+                      AppIcons.date_range,
+                      color: AppBrandColors.brand,
+                      size: 20,
+                    ),
                     SizedBox(width: 8),
                     Text(
                       '自定义时间范围',
-                      style:
-                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ],
                 ),
@@ -130,8 +136,11 @@ class _CompactDateRangeDialogState extends State<CompactDateRangeDialog> {
                   borderRadius: BorderRadius.circular(12),
                   child: Padding(
                     padding: const EdgeInsets.all(4.0),
-                    child: Icon(AppIcons.close,
-                        size: 18, color: colors.onSurfaceVariant),
+                    child: Icon(
+                      AppIcons.close,
+                      size: 18,
+                      color: colors.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ],
@@ -144,11 +153,17 @@ class _CompactDateRangeDialogState extends State<CompactDateRangeDialog> {
               runSpacing: 6,
               children: [
                 _buildPresetChip(
-                    '近30天', () => _applyQuickPreset(const Duration(days: 30))),
+                  '近30天',
+                  () => _applyQuickPreset(const Duration(days: 30)),
+                ),
                 _buildPresetChip(
-                    '近90天', () => _applyQuickPreset(const Duration(days: 90))),
+                  '近90天',
+                  () => _applyQuickPreset(const Duration(days: 90)),
+                ),
                 _buildPresetChip(
-                    '近半年', () => _applyQuickPreset(const Duration(days: 183))),
+                  '近半年',
+                  () => _applyQuickPreset(const Duration(days: 183)),
+                ),
                 _buildPresetChip('今年', _applyThisYear),
               ],
             ),
@@ -160,8 +175,9 @@ class _CompactDateRangeDialogState extends State<CompactDateRangeDialog> {
               decoration: BoxDecoration(
                 color: colors.surfaceContainerHighest.withValues(alpha: 0.28),
                 borderRadius: BorderRadius.circular(12),
-                border:
-                    Border.all(color: colors.outline.withValues(alpha: 0.35)),
+                border: Border.all(
+                  color: colors.outline.withValues(alpha: 0.35),
+                ),
               ),
               child: Row(
                 children: [
@@ -172,15 +188,20 @@ class _CompactDateRangeDialogState extends State<CompactDateRangeDialog> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('起始日期',
-                              style: TextStyle(
-                                  fontSize: 10,
-                                  color: colors.onSurfaceVariant)),
+                          Text(
+                            '起始日期',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: colors.onSurfaceVariant,
+                            ),
+                          ),
                           const SizedBox(height: 3),
                           Text(
                             DateFormatter.formatChineseYmd(_startDate),
                             style: const TextStyle(
-                                fontSize: 13, fontWeight: FontWeight.bold),
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ],
                       ),
@@ -188,8 +209,11 @@ class _CompactDateRangeDialogState extends State<CompactDateRangeDialog> {
                   ),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Icon(AppIcons.arrow_forward,
-                        size: 16, color: colors.onSurfaceVariant),
+                    child: Icon(
+                      AppIcons.arrow_forward,
+                      size: 16,
+                      color: colors.onSurfaceVariant,
+                    ),
                   ),
                   Expanded(
                     child: InkWell(
@@ -198,15 +222,20 @@ class _CompactDateRangeDialogState extends State<CompactDateRangeDialog> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Text('截止日期',
-                              style: TextStyle(
-                                  fontSize: 10,
-                                  color: colors.onSurfaceVariant)),
+                          Text(
+                            '截止日期',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: colors.onSurfaceVariant,
+                            ),
+                          ),
                           const SizedBox(height: 3),
                           Text(
                             DateFormatter.formatChineseYmd(_endDate),
                             style: const TextStyle(
-                                fontSize: 13, fontWeight: FontWeight.bold),
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ],
                       ),
@@ -224,8 +253,10 @@ class _CompactDateRangeDialogState extends State<CompactDateRangeDialog> {
               children: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: Text('取消',
-                      style: TextStyle(color: colors.onSurfaceVariant)),
+                  child: Text(
+                    '取消',
+                    style: TextStyle(color: colors.onSurfaceVariant),
+                  ),
                 ),
                 const SizedBox(width: 8),
                 ElevatedButton(
@@ -237,15 +268,20 @@ class _CompactDateRangeDialogState extends State<CompactDateRangeDialog> {
                     );
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFF5A24),
+                    backgroundColor: AppBrandColors.brand,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 10),
+                      horizontal: 20,
+                      vertical: 10,
+                    ),
                   ),
-                  child: const Text('确定应用',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  child: const Text(
+                    '确定应用',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
                 ),
               ],
             ),
@@ -262,15 +298,16 @@ class _CompactDateRangeDialogState extends State<CompactDateRangeDialog> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
-          color: const Color(0xFFFF5A24).withValues(alpha: 0.1),
+          color: AppBrandColors.brand.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(6),
         ),
         child: Text(
           label,
           style: const TextStyle(
-              fontSize: 11,
-              color: Color(0xFFFF5A24),
-              fontWeight: FontWeight.w600),
+            fontSize: 11,
+            color: AppBrandColors.brand,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
     );

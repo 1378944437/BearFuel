@@ -58,6 +58,7 @@ abstract final class AppIcons {
   static const IconData functions = LucideIcons.sigma;
   static const IconData gavel_outlined = LucideIcons.gavel;
   static const IconData gps_fixed = LucideIcons.locateFixed;
+  static const IconData globe = LucideIcons.globe;
   static const IconData grid_on_outlined = LucideIcons.grid3X3;
   static const IconData home_outlined = LucideIcons.house;
   static const IconData horizontal_rule = LucideIcons.minus;

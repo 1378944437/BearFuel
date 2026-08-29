@@ -24,15 +24,15 @@ class ApiZeroFuelPriceSnapshot {
   });
 
   Map<String, dynamic> toJson() => {
-        'province': province,
-        'gas92': price.gas92,
-        'gas95': price.gas95,
-        'gas98': price.gas98,
-        'diesel0': price.diesel0,
-        'fetchedAt': fetchedAt.millisecondsSinceEpoch,
-        'priceDate': price.lastChangeDate.toIso8601String(),
-        'sourceUrl': sourceUrl,
-      };
+    'province': province,
+    'gas92': price.gas92,
+    'gas95': price.gas95,
+    'gas98': price.gas98,
+    'diesel0': price.diesel0,
+    'fetchedAt': fetchedAt.millisecondsSinceEpoch,
+    'priceDate': price.lastChangeDate.toIso8601String(),
+    'sourceUrl': sourceUrl,
+  };
 
   static ApiZeroFuelPriceSnapshot? fromJson(Map<String, dynamic> json) {
     final province = json['province'];
@@ -54,7 +54,8 @@ class ApiZeroFuelPriceSnapshot {
         !_validFuelPrice(diesel0)) {
       return null;
     }
-    final priceDate = DateTime.tryParse('${json['priceDate'] ?? ''}') ??
+    final priceDate =
+        DateTime.tryParse('${json['priceDate'] ?? ''}') ??
         DateTime.fromMillisecondsSinceEpoch(fetchedAt.toInt());
 
     return ApiZeroFuelPriceSnapshot(
@@ -132,10 +133,12 @@ class ApiZeroFuelPriceService {
       final cached = await _readCache(province);
       final usableCached = _isFresh(cached) ? cached : null;
       final prefs = await SharedPreferences.getInstance();
-      final attemptKey =
-          force ? _manualAttemptKey(province) : _attemptKey(province);
-      final minimumInterval =
-          force ? minimumManualRequestInterval : minimumRequestInterval;
+      final attemptKey = force
+          ? _manualAttemptKey(province)
+          : _attemptKey(province);
+      final minimumInterval = force
+          ? minimumManualRequestInterval
+          : minimumRequestInterval;
       final lastAttemptMillis = prefs.getInt(attemptKey);
       if (lastAttemptMillis != null) {
         final elapsed = DateTime.now().difference(
@@ -185,34 +188,40 @@ class ApiZeroFuelPriceService {
   }) async {
     HttpClient? client;
     try {
-      final endpoint = Uri.parse(FuelPriceApiConfigStore.priceEndpoint).replace(
-        queryParameters: {
-          'action': 'price',
-          'province': province,
-        },
-      );
+      final endpoint = Uri.parse(
+        FuelPriceApiConfigStore.priceEndpoint,
+      ).replace(queryParameters: {'action': 'price', 'province': province});
       await FuelPriceApiConfigStore.waitForRequestSlot();
       client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
       final request = await client.getUrl(endpoint);
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      request.headers.set(HttpHeaders.userAgentHeader,
-          'BearFuel/${AppConfig.versionName} (personal use)');
+      request.headers.set(
+        HttpHeaders.userAgentHeader,
+        'BearFuel/${AppConfig.versionName} (personal use)',
+      );
 
       final effectiveKey = apiKey ?? FuelPriceApiConfigStore.apiKey;
       if (effectiveKey.isNotEmpty) {
-        request.headers
-            .set(HttpHeaders.authorizationHeader, 'Bearer $effectiveKey');
+        request.headers.set(
+          HttpHeaders.authorizationHeader,
+          'Bearer $effectiveKey',
+        );
       }
-      final response =
-          await request.close().timeout(const Duration(seconds: 10));
+      final response = await request.close().timeout(
+        const Duration(seconds: 10),
+      );
       if (response.statusCode != HttpStatus.ok) {
         _lastErrorMessage = response.statusCode == HttpStatus.tooManyRequests
             ? 'ApiZero 请求过于频繁（HTTP 429），请稍后重试或配置个人 Key'
             : 'HTTP 状态码 ${response.statusCode}';
         return null;
       }
-      return _parseResponse(
-          province, await response.transform(utf8.decoder).join());
+      // 响应体读取加超时，防止服务器中途停摆导致永久悬挂
+      final body = await response
+          .transform(utf8.decoder)
+          .join()
+          .timeout(const Duration(seconds: 10));
+      return _parseResponse(province, body);
     } catch (e) {
       _lastErrorMessage = '网络或 JSON 解析异常：$e';
       return null;
@@ -222,7 +231,9 @@ class ApiZeroFuelPriceService {
   }
 
   static ApiZeroFuelPriceSnapshot? _parseResponse(
-      String province, String body) {
+    String province,
+    String body,
+  ) {
     final decoded = jsonDecode(body);
     if (decoded is! Map<String, dynamic>) {
       _lastErrorMessage = '接口返回的 JSON 结构无效';
@@ -267,8 +278,15 @@ class ApiZeroFuelPriceService {
     final gas92 = numberFor(['92', '92号汽油', 'gas92', 'gasoline_92', 'p92']);
     final gas95 = numberFor(['95', '95号汽油', 'gas95', 'gasoline_95', 'p95']);
     final gas98 = numberFor(['98', '98号汽油', 'gas98', 'gasoline_98', 'p98']);
-    final diesel0 =
-        numberFor(['0', '0号柴油', '柴油0', 'diesel0', 'diesel_0', 'p0', '0#']);
+    final diesel0 = numberFor([
+      '0',
+      '0号柴油',
+      '柴油0',
+      'diesel0',
+      'diesel_0',
+      'p0',
+      '0#',
+    ]);
     if (!_validFuelPrice(gas92) ||
         !_validFuelPrice(gas95) ||
         !_validFuelPrice(gas98) ||
@@ -278,7 +296,8 @@ class ApiZeroFuelPriceService {
     }
 
     final normalizedProvince = FuelPriceService.cityToProvince(province);
-    final priceDate = DateTime.tryParse(
+    final priceDate =
+        DateTime.tryParse(
           '${data['update_date'] ?? data['update_time'] ?? data['time'] ?? decoded['time'] ?? ''}',
         ) ??
         DateTime.now();

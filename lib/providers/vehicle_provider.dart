@@ -41,7 +41,7 @@ class VehicleProvider extends ChangeNotifier {
   /// 切换当前选中的激活车辆
   Future<bool> selectVehicle(VehicleModel vehicle) {
     final result = _selectionTail.then((_) => _selectVehicle(vehicle));
-    _selectionTail = result.then<void>((_) {}, onError: (_, __) {});
+    _selectionTail = result.then<void>((_) {}, onError: (_, _) {});
     return result;
   }
 

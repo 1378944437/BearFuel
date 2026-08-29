@@ -52,7 +52,8 @@ class VehicleModel {
       defaultFuelType: map['default_fuel_type'] as String? ?? '92# 汽油',
       initialMileage: (map['initial_mileage'] as num?)?.toDouble() ?? 0.0,
       isDefault: (map['is_default'] as int?) == 1,
-      createdAt: DateTime.tryParse(map['created_at'] as String? ?? '') ??
+      createdAt:
+          DateTime.tryParse(map['created_at'] as String? ?? '') ??
           DateTime.now(),
     );
   }

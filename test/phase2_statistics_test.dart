@@ -106,8 +106,10 @@ void main() {
 
     test('2. 365天热力日历数据构造测试 (get365DayActivityHeatmap)', () {
       final summary = StatisticsService.get365DayActivityHeatmap(
-          sampleRecords, [],
-          year: 2026);
+        sampleRecords,
+        [],
+        year: 2026,
+      );
 
       expect(summary.year, 2026);
       expect(summary.cells.length, 365);

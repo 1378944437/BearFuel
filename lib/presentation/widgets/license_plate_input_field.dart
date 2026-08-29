@@ -1,4 +1,5 @@
 import 'package:bearfuel/core/theme/app_icons.dart';
+import '../../core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/utils/input_formatters.dart';
@@ -57,7 +58,7 @@ class _LicensePlateInputFieldState extends State<LicensePlateInputField> {
     '使',
     '领',
     '港',
-    '澳'
+    '澳',
   ];
 
   // 常见城市发牌代号 A-Z
@@ -85,7 +86,7 @@ class _LicensePlateInputFieldState extends State<LicensePlateInputField> {
     'W',
     'X',
     'Y',
-    'Z'
+    'Z',
   ];
 
   late String _selectedProvince;
@@ -97,6 +98,29 @@ class _LicensePlateInputFieldState extends State<LicensePlateInputField> {
   void initState() {
     super.initState();
     _parseInitialPlate(widget.initialPlate);
+  }
+
+  @override
+  void didUpdateWidget(covariant LicensePlateInputField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 父级在 State 存活期间切换了车辆档案：重新解析初始车牌，避免显示旧数据
+    final newPlate = widget.initialPlate ?? '';
+    final oldPlate = oldWidget.initialPlate ?? '';
+    if (newPlate != oldPlate && newPlate != _currentPlateValue) {
+      final staleController = _codeController;
+      _parseInitialPlate(newPlate);
+      setState(() {});
+      // 旧控制器等本帧新控制器接入后再释放
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        staleController.dispose();
+      });
+    }
+  }
+
+  /// 当前控件呈现的完整车牌
+  String get _currentPlateValue {
+    final code = _codeController.text.trim().toUpperCase();
+    return code.isEmpty ? '' : '$_selectedProvince$_selectedCityLetter·$code';
   }
 
   void _parseInitialPlate(String? plate) {
@@ -210,12 +234,12 @@ class _LicensePlateInputFieldState extends State<LicensePlateInputField> {
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
                         color: isSel
-                            ? const Color(0xFFFF5A24)
+                            ? AppBrandColors.brand
                             : (isDark ? Colors.white10 : Colors.grey[100]),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
                           color: isSel
-                              ? const Color(0xFFFF5A24)
+                              ? AppBrandColors.brand
                               : Colors.transparent,
                         ),
                       ),
@@ -266,7 +290,9 @@ class _LicensePlateInputFieldState extends State<LicensePlateInputField> {
                   Text(
                     '选择【$_selectedProvince】地市发牌字母代号',
                     style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.bold),
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   IconButton(
                     icon: const Icon(AppIcons.close),
@@ -294,12 +320,12 @@ class _LicensePlateInputFieldState extends State<LicensePlateInputField> {
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
                         color: isSel
-                            ? const Color(0xFF1E88E5)
+                            ? AppBrandColors.infoBlue
                             : (isDark ? Colors.white10 : Colors.grey[100]),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
                           color: isSel
-                              ? const Color(0xFF1E88E5)
+                              ? AppBrandColors.infoBlue
                               : Colors.transparent,
                         ),
                       ),
@@ -351,28 +377,34 @@ class _LicensePlateInputFieldState extends State<LicensePlateInputField> {
               _isNewEnergy ? '新能源' : '燃油车',
               style: TextStyle(
                 fontSize: 11,
-                color:
-                    _isNewEnergy ? Colors.green[700] : const Color(0xFF1E88E5),
+                color: _isNewEnergy
+                    ? Colors.green[700]
+                    : AppBrandColors.infoBlue,
                 fontWeight: FontWeight.bold,
               ),
             ),
             Transform.scale(
               scale: 0.75,
-              child: Switch(
-                value: _isNewEnergy,
-                activeThumbColor: Colors.green,
-                onChanged: (val) {
-                  HapticFeedback.selectionClick();
-                  setState(() {
-                    _isNewEnergy = val;
-                    // 如果从新能源切回燃油车且超过5位，自动截断
-                    if (!_isNewEnergy && _codeController.text.length > 5) {
-                      _codeController.text =
-                          _codeController.text.substring(0, 5);
-                    }
-                  });
-                  _notifyChange();
-                },
+              child: Semantics(
+                label: '新能源车牌开关',
+                child: Switch(
+                  value: _isNewEnergy,
+                  activeThumbColor: Colors.green,
+                  onChanged: (val) {
+                    HapticFeedback.selectionClick();
+                    setState(() {
+                      _isNewEnergy = val;
+                      // 如果从新能源切回燃油车且超过5位，自动截断
+                      if (!_isNewEnergy && _codeController.text.length > 5) {
+                        _codeController.text = _codeController.text.substring(
+                          0,
+                          5,
+                        );
+                      }
+                    });
+                    _notifyChange();
+                  },
+                ),
               ),
             ),
           ],
@@ -387,30 +419,38 @@ class _LicensePlateInputFieldState extends State<LicensePlateInputField> {
             InkWell(
               onTap: _showProvincePicker,
               borderRadius: BorderRadius.circular(8),
-              child: Container(
-                width: 52,
-                height: 44,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFF5A24).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                      color: const Color(0xFFFF5A24).withValues(alpha: 0.35)),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      _selectedProvince,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFFFF5A24),
-                      ),
+              child: Semantics(
+                button: true,
+                label: '选择省份简称，当前$_selectedProvince',
+                child: Container(
+                  width: 52,
+                  height: 44,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AppBrandColors.brand.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: AppBrandColors.brand.withValues(alpha: 0.35),
                     ),
-                    const Icon(AppIcons.arrow_drop_down,
-                        size: 14, color: Color(0xFFFF5A24)),
-                  ],
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        _selectedProvince,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: AppBrandColors.brand,
+                        ),
+                      ),
+                      const Icon(
+                        AppIcons.arrow_drop_down,
+                        size: 14,
+                        color: AppBrandColors.brand,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -420,30 +460,38 @@ class _LicensePlateInputFieldState extends State<LicensePlateInputField> {
             InkWell(
               onTap: _showCityLetterPicker,
               borderRadius: BorderRadius.circular(8),
-              child: Container(
-                width: 48,
-                height: 44,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E88E5).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                      color: const Color(0xFF1E88E5).withValues(alpha: 0.35)),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      _selectedCityLetter,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1E88E5),
-                      ),
+              child: Semantics(
+                button: true,
+                label: '选择发牌城市字母，当前$_selectedCityLetter',
+                child: Container(
+                  width: 48,
+                  height: 44,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AppBrandColors.infoBlue.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: AppBrandColors.infoBlue.withValues(alpha: 0.35),
                     ),
-                    const Icon(AppIcons.arrow_drop_down,
-                        size: 14, color: Color(0xFF1E88E5)),
-                  ],
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        _selectedCityLetter,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: AppBrandColors.infoBlue,
+                        ),
+                      ),
+                      const Icon(
+                        AppIcons.arrow_drop_down,
+                        size: 14,
+                        color: AppBrandColors.infoBlue,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -463,27 +511,33 @@ class _LicensePlateInputFieldState extends State<LicensePlateInputField> {
                     LengthLimitingTextInputFormatter(maxCodeDigits),
                   ],
                   style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.5),
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.5,
+                  ),
                   decoration: InputDecoration(
                     counterText: '', // 隐藏默认的下置计数器，使用右侧紧凑徽章
                     hintText: _isNewEnergy
                         ? '新能源代码 (6位，如 D12345)'
                         : '号牌代码 (5位，如 88888)',
                     hintStyle: TextStyle(
-                        fontSize: 11,
-                        color: colors.onSurfaceVariant,
-                        letterSpacing: 0),
+                      fontSize: 11,
+                      color: colors.onSurfaceVariant,
+                      letterSpacing: 0,
+                    ),
                     contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 10),
+                      horizontal: 10,
+                      vertical: 10,
+                    ),
                     suffixIcon: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         // 位数专属徽章：只计算代码位数
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 5, vertical: 2),
+                            horizontal: 5,
+                            vertical: 2,
+                          ),
                           margin: const EdgeInsets.only(right: 6),
                           decoration: BoxDecoration(
                             color: currentCodeDigits == maxCodeDigits
@@ -503,16 +557,26 @@ class _LicensePlateInputFieldState extends State<LicensePlateInputField> {
                           ),
                         ),
                         if (code.isNotEmpty)
-                          GestureDetector(
-                            onTap: () {
-                              _codeController.clear();
-                              _notifyChange();
-                              setState(() {});
-                            },
-                            child: Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: Icon(AppIcons.cancel,
-                                  size: 16, color: colors.onSurfaceVariant),
+                          Tooltip(
+                            message: '清除已输入的车牌代码',
+                            child: GestureDetector(
+                              onTap: () {
+                                _codeController.clear();
+                                _notifyChange();
+                                setState(() {});
+                              },
+                              child: Semantics(
+                                button: true,
+                                label: '清除车牌代码',
+                                child: Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: Icon(
+                                    AppIcons.cancel,
+                                    size: 16,
+                                    color: colors.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                       ],
@@ -535,8 +599,9 @@ class _LicensePlateInputFieldState extends State<LicensePlateInputField> {
   Widget _buildInlineSimulationBadge(String code) {
     final displayProvince = code.isNotEmpty ? _selectedProvince : '京';
     final displayCityLetter = code.isNotEmpty ? _selectedCityLetter : 'A';
-    final displayCode =
-        code.isNotEmpty ? code : (_isNewEnergy ? 'D12345' : '88888');
+    final displayCode = code.isNotEmpty
+        ? code
+        : (_isNewEnergy ? 'D12345' : '88888');
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -546,16 +611,16 @@ class _LicensePlateInputFieldState extends State<LicensePlateInputField> {
                 colors: [
                   Color(0xFFE8F5E9),
                   Color(0xFFA5D6A7),
-                  Color(0xFF43A047)
+                  Color(0xFF43A047),
                 ],
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
               )
             : const LinearGradient(
                 colors: [
-                  Color(0xFF1E88E5),
+                  AppBrandColors.infoBlue,
                   Color(0xFF1565C0),
-                  Color(0xFF0D47A1)
+                  Color(0xFF0D47A1),
                 ],
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,

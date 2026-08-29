@@ -70,7 +70,8 @@ class RefuelProvider extends ChangeNotifier {
       if (requestId != _loadRequestId || _currentVehicleId != vehicleId) return;
 
       AppConfig.log(
-          '已加载车辆($vehicleId)的 ${_records.length} 条加油记录，计算有效次数: ${_summary.validCalculatedCount}');
+        '已加载车辆($vehicleId)的 ${_records.length} 条加油记录，计算有效次数: ${_summary.validCalculatedCount}',
+      );
     } catch (e) {
       AppConfig.log('加载加油记录失败: $e');
       if (requestId == _loadRequestId && _currentVehicleId == vehicleId) {
@@ -82,6 +83,18 @@ class RefuelProvider extends ChangeNotifier {
         notifyListeners();
       }
     }
+  }
+
+  /// 清空内存中的记录状态（如当前车辆被删除后调用），
+  /// 避免界面继续展示已不存在车辆的数据。
+  void clear() {
+    _loadRequestId++;
+    _currentVehicleId = null;
+    _records = [];
+    _summary = const FuelCalculationSummary();
+    _isLoading = false;
+    _errorMessage = null;
+    notifyListeners();
   }
 
   /// 新增加油记录
@@ -129,9 +142,13 @@ class RefuelProvider extends ChangeNotifier {
   }
 
   /// 批量导入小熊油耗数据（覆盖或追加）
-  Future<bool> importBearFuelRecords(List<RefuelRecordModel> importedRecords,
-      {bool overwrite = false}) async {
-    if (_currentVehicleId == null || importedRecords.isEmpty) return false;
+  ///
+  /// 返回 null 表示导入失败；成功时返回新增/跳过重复的统计。
+  Future<BatchImportStats?> importBearFuelRecords(
+    List<RefuelRecordModel> importedRecords, {
+    bool overwrite = false,
+  }) async {
+    if (_currentVehicleId == null || importedRecords.isEmpty) return null;
 
     _isLoading = true;
     notifyListeners();
@@ -142,16 +159,20 @@ class RefuelProvider extends ChangeNotifier {
           _currentVehicleId!,
           importedRecords,
         );
-      } else {
-        await _db.batchInsertRefuelRecords(importedRecords);
+        await loadRecords(_currentVehicleId!);
+        return BatchImportStats(
+          inserted: importedRecords.length,
+          skippedDuplicates: 0,
+        );
       }
+      final stats = await _db.batchInsertRefuelRecords(importedRecords);
       await loadRecords(_currentVehicleId!);
-      return true;
+      return stats;
     } catch (e) {
       AppConfig.log('导入小熊油耗记录失败: $e');
       _isLoading = false;
       notifyListeners();
-      return false;
+      return null;
     }
   }
 

@@ -22,7 +22,8 @@ class _AmapKeySettingsScreenState extends State<AmapKeySettingsScreen> {
   void initState() {
     super.initState();
     _keyController = TextEditingController(
-        text: AmapKeyStore.hasUserKey ? AmapKeyStore.currentKey : '');
+      text: AmapKeyStore.hasUserKey ? AmapKeyStore.currentKey : '',
+    );
   }
 
   @override
@@ -38,9 +39,10 @@ class _AmapKeySettingsScreenState extends State<AmapKeySettingsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text(_keyController.text.trim().isEmpty
-                ? '已清除高德 Key'
-                : '高德 Key 已保存')),
+          content: Text(
+            _keyController.text.trim().isEmpty ? '已清除高德 Key' : '高德 Key 已保存',
+          ),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
@@ -76,9 +78,9 @@ class _AmapKeySettingsScreenState extends State<AmapKeySettingsScreen> {
   Future<void> _openWebPage(String url) async {
     final opened = await ExternalUrlLauncher.open(url);
     if (!opened && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('无法打开网页，请检查浏览器是否可用')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('无法打开网页，请检查浏览器是否可用')));
     }
   }
 
@@ -110,14 +112,19 @@ class _AmapKeySettingsScreenState extends State<AmapKeySettingsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title,
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
                 const SizedBox(height: 4),
-                Text(description,
-                    style: TextStyle(
-                        fontSize: 12,
-                        color: colors.onSurfaceVariant,
-                        height: 1.45)),
+                Text(
+                  description,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colors.onSurfaceVariant,
+                    height: 1.45,
+                  ),
+                ),
               ],
             ),
           ),
@@ -137,8 +144,10 @@ class _AmapKeySettingsScreenState extends State<AmapKeySettingsScreen> {
       contentPadding: EdgeInsets.zero,
       leading: Icon(icon, color: const Color(0xFFFF5A24)),
       title: Text(title),
-      subtitle: Text(subtitle,
-          style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant)),
+      subtitle: Text(
+        subtitle,
+        style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
+      ),
       trailing: const Icon(AppIcons.open_in_new, size: 18),
       onTap: () => _openWebPage(url),
     );
@@ -163,9 +172,11 @@ class _AmapKeySettingsScreenState extends State<AmapKeySettingsScreen> {
               prefixIcon: const Icon(AppIcons.key_outlined),
               suffixIcon: IconButton(
                 tooltip: _obscureKey ? '显示 Key' : '隐藏 Key',
-                icon: Icon(_obscureKey
-                    ? AppIcons.visibility_outlined
-                    : AppIcons.visibility_off_outlined),
+                icon: Icon(
+                  _obscureKey
+                      ? AppIcons.visibility_outlined
+                      : AppIcons.visibility_off_outlined,
+                ),
                 onPressed: () => setState(() => _obscureKey = !_obscureKey),
               ),
             ),
@@ -191,7 +202,8 @@ class _AmapKeySettingsScreenState extends State<AmapKeySettingsScreen> {
                 ? const SizedBox(
                     width: 18,
                     height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2))
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : const Icon(AppIcons.save_outlined),
             label: const Text('保存 Key'),
           ),
@@ -202,14 +214,16 @@ class _AmapKeySettingsScreenState extends State<AmapKeySettingsScreen> {
                 ? const SizedBox(
                     width: 18,
                     height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2))
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : const Icon(AppIcons.network_check_outlined),
             label: const Text('测试连接'),
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
-            onPressed:
-                _isSaving || _isTesting || !isConfigured ? null : _clearKey,
+            onPressed: _isSaving || _isTesting || !isConfigured
+                ? null
+                : _clearKey,
             icon: const Icon(AppIcons.delete_outline),
             label: const Text('清除本机 Key'),
           ),
@@ -221,8 +235,10 @@ class _AmapKeySettingsScreenState extends State<AmapKeySettingsScreen> {
           const SizedBox(height: 24),
           const Divider(),
           const SizedBox(height: 16),
-          const Text('详细配置教程',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const Text(
+            '详细配置教程',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 14),
           _buildGuideStep(
             number: 1,
@@ -245,8 +261,10 @@ class _AmapKeySettingsScreenState extends State<AmapKeySettingsScreen> {
             description: '将复制的 Key 粘贴到上方输入框并保存。返回地图选站后，应用会请求真实地址和周边加油站数据。',
           ),
           const SizedBox(height: 8),
-          const Text('相关网页',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const Text(
+            '相关网页',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 6),
           _buildWebLink(
             icon: AppIcons.dashboard_outlined,

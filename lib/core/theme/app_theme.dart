@@ -17,10 +17,18 @@ class AppRadius {
   static const double extraSmall = 4;
   static const double small = 6;
   static const double medium = 8;
-  static const double large = 8;
-  static const double extraLarge = 8;
+  static const double large = 16;
+  static const double extraLarge = 20;
   static const double dialog = 12;
   static const double pill = 999;
+}
+
+/// 品牌语义色：组件内的品牌色 / 辅助蓝 / 主文本色统一从此取值，
+/// 避免散落的硬编码 Color(0xFF…) 随主题演进悄悄漂移。
+class AppBrandColors {
+  static const Color brand = Color(0xFFFF5A24); // 品牌橙（主操作）
+  static const Color infoBlue = Color(0xFF1E88E5); // 信息蓝（选中/辅助）
+  static const Color textPrimary = Color(0xFF333333); // 亮色模式主文本
 }
 
 class AppSize {
@@ -63,88 +71,103 @@ class AppTheme {
 
   static const PageTransitionsTheme _pageTransitionsTheme =
       PageTransitionsTheme(
-    builders: {
-      TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
-      TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-    },
-  );
+        builders: {
+          TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        },
+      );
 
   static const TextTheme _textTheme = TextTheme(
     displayLarge: TextStyle(
-        fontSize: 44,
-        height: 1.05,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 0),
+      fontSize: 44,
+      height: 1.05,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0,
+    ),
     displayMedium: TextStyle(
-        fontSize: 36,
-        height: 1.08,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 0),
+      fontSize: 36,
+      height: 1.08,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0,
+    ),
     displaySmall: TextStyle(
-        fontSize: 30,
-        height: 1.1,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 0),
+      fontSize: 30,
+      height: 1.1,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0,
+    ),
     headlineLarge: TextStyle(
-        fontSize: 28,
-        height: 1.15,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 0),
+      fontSize: 28,
+      height: 1.15,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0,
+    ),
     headlineMedium: TextStyle(
-        fontSize: 24,
-        height: 1.2,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 0),
+      fontSize: 24,
+      height: 1.2,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0,
+    ),
     headlineSmall: TextStyle(
-        fontSize: 20,
-        height: 1.25,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 0),
+      fontSize: 20,
+      height: 1.25,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0,
+    ),
     titleLarge: TextStyle(
-        fontSize: 18,
-        height: 1.3,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 0),
+      fontSize: 18,
+      height: 1.3,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 0,
+    ),
     titleMedium: TextStyle(
-        fontSize: 15,
-        height: 1.35,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0),
+      fontSize: 15,
+      height: 1.35,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0,
+    ),
     titleSmall: TextStyle(
-        fontSize: 13,
-        height: 1.35,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0),
+      fontSize: 13,
+      height: 1.35,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0,
+    ),
     bodyLarge: TextStyle(
-        fontSize: 15,
-        height: 1.5,
-        fontWeight: FontWeight.w400,
-        letterSpacing: 0),
+      fontSize: 15,
+      height: 1.5,
+      fontWeight: FontWeight.w400,
+      letterSpacing: 0,
+    ),
     bodyMedium: TextStyle(
-        fontSize: 13,
-        height: 1.5,
-        fontWeight: FontWeight.w400,
-        letterSpacing: 0),
+      fontSize: 13,
+      height: 1.5,
+      fontWeight: FontWeight.w400,
+      letterSpacing: 0,
+    ),
     bodySmall: TextStyle(
-        fontSize: 11,
-        height: 1.45,
-        fontWeight: FontWeight.w400,
-        letterSpacing: 0),
+      fontSize: 11,
+      height: 1.45,
+      fontWeight: FontWeight.w400,
+      letterSpacing: 0,
+    ),
     labelLarge: TextStyle(
-        fontSize: 13,
-        height: 1.2,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0),
+      fontSize: 13,
+      height: 1.2,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0,
+    ),
     labelMedium: TextStyle(
-        fontSize: 11,
-        height: 1.2,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0),
+      fontSize: 11,
+      height: 1.2,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0,
+    ),
     labelSmall: TextStyle(
-        fontSize: 10,
-        height: 1.2,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0),
+      fontSize: 10,
+      height: 1.2,
+      fontWeight: FontWeight.w600,
+      letterSpacing: 0,
+    ),
   );
 
   static ThemeData get lightTheme => _buildTheme(Brightness.light);
@@ -167,11 +190,13 @@ class AppTheme {
       error: errorColor,
       surface: surface,
       onSurface: isDark ? const Color(0xFFF3F5F4) : textPrimary,
-      onSurfaceVariant:
-          isDark ? const Color(0xFFB6BFC1) : const Color(0xFF596164),
+      onSurfaceVariant: isDark
+          ? const Color(0xFFB6BFC1)
+          : const Color(0xFF596164),
       outline: isDark ? const Color(0xFF41484A) : const Color(0xFFCBD1D3),
-      outlineVariant:
-          isDark ? const Color(0xFF2A3032) : const Color(0xFFE1E5E6),
+      outlineVariant: isDark
+          ? const Color(0xFF2A3032)
+          : const Color(0xFFE1E5E6),
     );
     final overlayStyle = SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -179,8 +204,9 @@ class AppTheme {
       statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
       systemNavigationBarColor: Colors.transparent,
       systemNavigationBarDividerColor: Colors.transparent,
-      systemNavigationBarIconBrightness:
-          isDark ? Brightness.light : Brightness.dark,
+      systemNavigationBarIconBrightness: isDark
+          ? Brightness.light
+          : Brightness.dark,
     );
     final fieldBorder = OutlineInputBorder(
       borderRadius: BorderRadius.circular(AppRadius.medium),
@@ -282,10 +308,13 @@ class AppTheme {
         isDense: true,
         filled: true,
         fillColor: surface,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
-        labelStyle: _textTheme.bodyMedium
-            ?.copyWith(color: colorScheme.onSurfaceVariant),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 15,
+        ),
+        labelStyle: _textTheme.bodyMedium?.copyWith(
+          color: colorScheme.onSurfaceVariant,
+        ),
         hintStyle: _textTheme.bodyMedium?.copyWith(
           color: colorScheme.onSurfaceVariant.withValues(alpha: 0.72),
         ),
@@ -334,8 +363,9 @@ class AppTheme {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadius.small),
         ),
-        labelStyle:
-            _textTheme.labelMedium!.copyWith(color: colorScheme.onSurface),
+        labelStyle: _textTheme.labelMedium!.copyWith(
+          color: colorScheme.onSurface,
+        ),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       ),
       dialogTheme: DialogThemeData(
@@ -357,8 +387,9 @@ class AppTheme {
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        backgroundColor:
-            isDark ? const Color(0xFFF1F3F2) : const Color(0xFF171B1C),
+        backgroundColor: isDark
+            ? const Color(0xFFF1F3F2)
+            : const Color(0xFF171B1C),
         contentTextStyle: _textTheme.bodyMedium?.copyWith(
           color: isDark ? const Color(0xFF171B1C) : Colors.white,
         ),

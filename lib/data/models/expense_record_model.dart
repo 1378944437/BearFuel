@@ -46,7 +46,8 @@ class ExpenseRecordModel {
       id: map['id'] as String,
       vehicleId: map['vehicle_id'] as String,
       category: map['category'] as String,
-      expenseDate: DateTime.tryParse(map['expense_date'] as String? ?? '') ??
+      expenseDate:
+          DateTime.tryParse(map['expense_date'] as String? ?? '') ??
           DateTime.now(),
       amount: (map['amount'] as num).toDouble(),
       currentMileage: (map['current_mileage'] as num?)?.toDouble(),
@@ -55,7 +56,8 @@ class ExpenseRecordModel {
           ? DateTime.tryParse(map['next_reminder_date'] as String)
           : null,
       note: map['note'] as String?,
-      createdAt: DateTime.tryParse(map['created_at'] as String? ?? '') ??
+      createdAt:
+          DateTime.tryParse(map['created_at'] as String? ?? '') ??
           DateTime.now(),
     );
   }

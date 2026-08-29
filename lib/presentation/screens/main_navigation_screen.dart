@@ -40,8 +40,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
         if (mounted) {
           final expenseProv = context.read<ExpenseProvider>();
-          await expenseProv.loadExpenses(vId,
-              currentMaxMileage: refuelProv.latestMileage);
+          await expenseProv.loadExpenses(
+            vId,
+            currentMaxMileage: refuelProv.latestMileage,
+          );
         }
       }
     });
@@ -100,10 +102,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             }
             return false;
           },
-          child: IndexedStack(
-            index: _currentIndex,
-            children: pages,
-          ),
+          child: IndexedStack(index: _currentIndex, children: pages),
         ),
         floatingActionButton: AnimatedSlide(
           duration: const Duration(milliseconds: 220),
@@ -144,8 +143,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   border: Border.all(color: colors.outlineVariant),
                   boxShadow: [
                     BoxShadow(
-                      color:
-                          Colors.black.withValues(alpha: isDark ? 0.24 : 0.08),
+                      color: Colors.black.withValues(
+                        alpha: isDark ? 0.24 : 0.08,
+                      ),
                       blurRadius: 24,
                       offset: const Offset(0, 10),
                     ),
@@ -210,8 +210,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                    color:
-                        isSelected ? colors.primary : colors.onSurfaceVariant,
+                    color: isSelected
+                        ? colors.primary
+                        : colors.onSurfaceVariant,
                   ),
                 ),
               ],

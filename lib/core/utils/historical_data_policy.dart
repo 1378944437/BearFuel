@@ -36,10 +36,9 @@ class HistoricalDataWindow {
   }
 
   static HistoricalDataWindow fromDates(Iterable<DateTime> dates) {
-    final normalized = dates
-        .map((date) => DateTime(date.year, date.month, date.day))
-        .toList()
-      ..sort();
+    final normalized =
+        dates.map((date) => DateTime(date.year, date.month, date.day)).toList()
+          ..sort();
     if (normalized.isEmpty) {
       return const HistoricalDataWindow(
         startDate: null,
@@ -53,10 +52,10 @@ class HistoricalDataWindow {
     final granularity = normalized.length <= 30 && spanDays <= 90
         ? HistoryGranularity.day
         : normalized.length <= 180 && spanDays <= 730
-            ? HistoryGranularity.week
-            : spanDays <= 1095
-                ? HistoryGranularity.month
-                : HistoryGranularity.quarter;
+        ? HistoryGranularity.week
+        : spanDays <= 1095
+        ? HistoryGranularity.month
+        : HistoryGranularity.quarter;
     return HistoricalDataWindow(
       startDate: normalized.first,
       endDate: normalized.last,
@@ -76,12 +75,14 @@ class HistoricalDataWindow {
     final existing = existingDates
         .map((date) => DateTime(date.year, date.month, date.day))
         .where(
-            (date) => !date.isBefore(earliestAllowed) && !date.isAfter(today))
+          (date) => !date.isBefore(earliestAllowed) && !date.isAfter(today),
+        )
         .toSet();
     final recentReferences = referenceDates
         .map((date) => DateTime(date.year, date.month, date.day))
         .where(
-            (date) => !date.isBefore(earliestAllowed) && !date.isAfter(today))
+          (date) => !date.isBefore(earliestAllowed) && !date.isAfter(today),
+        )
         .toList();
 
     final keys = <String>{_monthKey(today)};

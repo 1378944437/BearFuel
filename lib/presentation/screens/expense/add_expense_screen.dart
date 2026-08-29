@@ -32,6 +32,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
   DateTime? _reminderDate;
   bool _enableReminder = false;
+  bool _isSaving = false; // 防止连点保存产生重复记录
 
   @override
   void initState() {
@@ -47,8 +48,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
       text: currentMileage > 0 ? currentMileage.toStringAsFixed(0) : '',
     );
     _reminderMileageController = TextEditingController(
-      text:
-          currentMileage > 0 ? (currentMileage + 5000).toStringAsFixed(0) : '',
+      text: currentMileage > 0
+          ? (currentMileage + 5000).toStringAsFixed(0)
+          : '',
     );
     _noteController = TextEditingController();
   }
@@ -93,6 +95,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
   /// 保存费用记录
   Future<void> _saveExpense() async {
+    if (_isSaving) return; // 写入进行中，忽略重复点击
     if (!_formKey.currentState!.validate()) return;
 
     final vehicleProv = context.read<VehicleProvider>();
@@ -101,54 +104,75 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
     final currentVehicle = vehicleProv.currentVehicle;
 
     if (currentVehicle == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先添加或选择一辆爱车')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请先添加或选择一辆爱车')));
       return;
     }
 
-    final amount = double.parse(_amountController.text.trim());
-    final currentMileage = double.tryParse(_mileageController.text.trim());
+    setState(() => _isSaving = true);
 
-    double? reminderMileage;
-    DateTime? reminderDate;
-    if (_enableReminder) {
-      reminderMileage = double.tryParse(_reminderMileageController.text.trim());
-      reminderDate = _reminderDate;
-    }
+    try {
+      final amount = double.parse(_amountController.text.trim());
+      final currentMileage = double.tryParse(_mileageController.text.trim());
 
-    final record = ExpenseRecordModel(
-      id: const Uuid().v4(),
-      vehicleId: currentVehicle.id,
-      category: _selectedCategory,
-      expenseDate: _selectedDate,
-      amount: amount,
-      currentMileage: currentMileage,
-      nextReminderMileage: reminderMileage,
-      nextReminderDate: reminderDate,
-      note: _noteController.text.trim().isEmpty
-          ? null
-          : _noteController.text.trim(),
-    );
-
-    final success = await expenseProv.addExpense(
-      record,
-      currentMaxMileage: refuelProv.latestMileage,
-    );
-
-    if (mounted) {
-      if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('费用记录已保存'), backgroundColor: Colors.green),
+      double? reminderMileage;
+      DateTime? reminderDate;
+      if (_enableReminder) {
+        reminderMileage = double.tryParse(
+          _reminderMileageController.text.trim(),
         );
-        Navigator.of(context).pop(true);
-      } else {
+        reminderDate = _reminderDate;
+      }
+
+      final record = ExpenseRecordModel(
+        id: const Uuid().v4(),
+        vehicleId: currentVehicle.id,
+        category: _selectedCategory,
+        expenseDate: _selectedDate,
+        amount: amount,
+        currentMileage: currentMileage,
+        nextReminderMileage: reminderMileage,
+        nextReminderDate: reminderDate,
+        note: _noteController.text.trim().isEmpty
+            ? null
+            : _noteController.text.trim(),
+      );
+
+      final success = await expenseProv.addExpense(
+        record,
+        currentMaxMileage: refuelProv.latestMileage,
+      );
+
+      if (mounted) {
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('费用记录已保存'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.of(context).pop(true);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('保存失败，请重试'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text('保存失败，请重试'), backgroundColor: Colors.red),
+            content: Text('保存异常，请重试'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -162,7 +186,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
           IconButton(
             icon: const Icon(AppIcons.check),
             tooltip: '保存',
-            onPressed: _saveExpense,
+            onPressed: _isSaving ? null : _saveExpense,
           ),
         ],
       ),
@@ -181,8 +205,10 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                   children: [
                     const Text(
                       '费用类型',
-                      style:
-                          TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(height: 10),
                     Wrap(
@@ -206,7 +232,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                           child: AnimatedContainer(
                             duration: const Duration(milliseconds: 150),
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 14, vertical: 8),
+                              horizontal: 14,
+                              vertical: 8,
+                            ),
                             decoration: BoxDecoration(
                               color: isSelected
                                   ? const Color(0xFFFF5A24)
@@ -250,8 +278,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                   children: [
                     TextFormField(
                       controller: _amountController,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       inputFormatters: [AppInputFormatters.decimal2],
                       decoration: const InputDecoration(
                         labelText: '支出金额',
@@ -265,21 +294,27 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                     const SizedBox(height: 12),
                     ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: const Icon(AppIcons.calendar_today,
-                          color: Color(0xFFFF5A24)),
+                      leading: const Icon(
+                        AppIcons.calendar_today,
+                        color: Color(0xFFFF5A24),
+                      ),
                       title: const Text('发生日期'),
-                      subtitle:
-                          Text(DateFormatter.formatChineseYmd(_selectedDate)),
-                      trailing:
-                          const Icon(AppIcons.arrow_forward_ios, size: 14),
+                      subtitle: Text(
+                        DateFormatter.formatChineseYmd(_selectedDate),
+                      ),
+                      trailing: const Icon(
+                        AppIcons.arrow_forward_ios,
+                        size: 14,
+                      ),
                       onTap: _pickDate,
                     ),
                     const Divider(height: 1),
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: _mileageController,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       inputFormatters: [AppInputFormatters.decimal2],
                       decoration: const InputDecoration(
                         labelText: '当前里程（选填）',
@@ -308,7 +343,9 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                         const Text(
                           '设置下次提醒（如保养/保险）',
                           style: TextStyle(
-                              fontSize: 15, fontWeight: FontWeight.bold),
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         Switch(
                           value: _enableReminder,
@@ -323,28 +360,34 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                       TextFormField(
                         controller: _reminderMileageController,
                         keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
+                          decimal: true,
+                        ),
                         inputFormatters: [AppInputFormatters.decimal2],
                         decoration: const InputDecoration(
                           labelText: '下次提醒里程 (km)',
                           hintText: '如 17500',
-                          prefixIcon:
-                              Icon(AppIcons.notification_important_outlined),
+                          prefixIcon: Icon(
+                            AppIcons.notification_important_outlined,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 12),
                       ListTile(
                         contentPadding: EdgeInsets.zero,
-                        leading:
-                            const Icon(AppIcons.alarm, color: Colors.orange),
+                        leading: const Icon(
+                          AppIcons.alarm,
+                          color: Colors.orange,
+                        ),
                         title: const Text('下次提醒日期'),
                         subtitle: Text(
                           _reminderDate != null
                               ? DateFormatter.formatChineseYmd(_reminderDate!)
                               : '点击设定到期提醒日',
                         ),
-                        trailing:
-                            const Icon(AppIcons.arrow_forward_ios, size: 14),
+                        trailing: const Icon(
+                          AppIcons.arrow_forward_ios,
+                          size: 14,
+                        ),
                         onTap: _pickReminderDate,
                       ),
                     ],
@@ -387,7 +430,7 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                             '火花塞',
                             '电瓶更换',
                             '洗车精洗',
-                            '四轮定位'
+                            '四轮定位',
                           ].map((tag) {
                             return Padding(
                               padding: const EdgeInsets.only(right: 6),
@@ -404,19 +447,22 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
                                 borderRadius: BorderRadius.circular(4),
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 3),
+                                    horizontal: 8,
+                                    vertical: 3,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: Colors.grey.withValues(alpha: 0.08),
                                     borderRadius: BorderRadius.circular(4),
                                     border: Border.all(
-                                        color:
-                                            Colors.grey.withValues(alpha: 0.2)),
+                                      color: Colors.grey.withValues(alpha: 0.2),
+                                    ),
                                   ),
                                   child: Text(
                                     '+ $tag',
                                     style: TextStyle(
-                                        fontSize: 11,
-                                        color: colors.onSurfaceVariant),
+                                      fontSize: 11,
+                                      color: colors.onSurfaceVariant,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -433,14 +479,23 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
             // 保存按钮
             ElevatedButton(
-              onPressed: _saveExpense,
+              onPressed: _isSaving ? null : _saveExpense,
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 50),
               ),
-              child: const Text(
-                '保存费用记录',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
+              child: _isSaving
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text(
+                      '保存费用记录',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
             ),
             const SizedBox(height: 40),
           ],

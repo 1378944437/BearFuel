@@ -236,7 +236,8 @@ class LocationService {
           position = candidate;
         } else {
           AppConfig.log(
-              '忽略低精度系统定位: ±${candidate.accuracy.toStringAsFixed(0)}米');
+            '忽略低精度系统定位: ±${candidate.accuracy.toStringAsFixed(0)}米',
+          );
         }
       } catch (e) {
         AppConfig.log('系统综合定位等待中: $e');
@@ -256,7 +257,8 @@ class LocationService {
             position = candidate;
           } else {
             AppConfig.log(
-                '忽略低精度硬件定位: ±${candidate.accuracy.toStringAsFixed(0)}米');
+              '忽略低精度硬件定位: ±${candidate.accuracy.toStringAsFixed(0)}米',
+            );
           }
         } catch (e) {
           AppConfig.log('硬件卫星定位超时: $e');
@@ -323,14 +325,18 @@ class LocationService {
         // 4.2 Fallback to platform geocoding when AMap is unavailable.
         try {
           if (cityName.isEmpty || district == null || street == null) {
-            final placemarks = await placemarkFromCoordinates(realLat, realLon);
+            // 平台逆地理编码可能长时间无响应，限制 6 秒
+            final placemarks = await placemarkFromCoordinates(
+              realLat,
+              realLon,
+            ).timeout(const Duration(seconds: 6));
             if (placemarks.isNotEmpty) {
               final place = placemarks.first;
               cityName = cityName.isEmpty
                   ? place.locality ??
-                      place.subAdministrativeArea ??
-                      place.administrativeArea ??
-                      ''
+                        place.subAdministrativeArea ??
+                        place.administrativeArea ??
+                        ''
                   : cityName;
               cityName = cityName
                   .replaceAll('市', '')
@@ -415,7 +421,8 @@ class LocationService {
           : cleanTown;
 
       AppConfig.log(
-          'GPS 定位完成: lat=$realLat, lon=$realLon, city=$resolvedCity, town=$township, urbanDist=${urbanDist.toStringAsFixed(1)}km');
+        'GPS 定位完成: lat=$realLat, lon=$realLon, city=$resolvedCity, town=$township, urbanDist=${urbanDist.toStringAsFixed(1)}km',
+      );
 
       final finalLoc = UserLocation(
         latitude: realLat,
@@ -429,8 +436,8 @@ class LocationService {
         source: LocationSource.hardwareGnss,
       );
 
-      // 异步保存到本地持久化缓存
-      saveCachedLocation(finalLoc);
+      // 等待写入本地持久化缓存完成（内部已全量捕获异常）
+      await saveCachedLocation(finalLoc);
 
       return LocationResult(
         status: LocationFetchStatus.success,
@@ -448,7 +455,9 @@ class LocationService {
 
   /// 网络轻量快速逆地理编码
   static Future<Map<String, String>?> _reverseGeocodeOnline(
-      double lat, double lon) async {
+    double lat,
+    double lon,
+  ) async {
     HttpClient? client;
     try {
       client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
@@ -456,35 +465,44 @@ class LocationService {
         'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=$lat&lon=$lon&accept-language=zh-CN',
       );
       final req = await client.getUrl(uri);
-      req.headers.set('User-Agent',
-          'BearFuel/${AppConfig.versionName} (support@bearfuel.app)');
+      req.headers.set(
+        'User-Agent',
+        'BearFuel/${AppConfig.versionName} (support@bearfuel.app)',
+      );
       final res = await req.close().timeout(const Duration(seconds: 2));
 
       if (res.statusCode == 200) {
-        final body = await res.transform(utf8.decoder).join();
+        // 响应体读取同样要有超时，防止服务器中途停摆导致永久悬挂
+        final body = await res
+            .transform(utf8.decoder)
+            .join()
+            .timeout(const Duration(seconds: 2));
         final data = jsonDecode(body) as Map<String, dynamic>;
         final address = data['address'] as Map<String, dynamic>?;
 
         if (address != null) {
-          String city = (address['city'] ??
-                  address['county'] ??
-                  address['state_district'] ??
-                  '')
-              .toString();
+          String city =
+              (address['city'] ??
+                      address['county'] ??
+                      address['state_district'] ??
+                      '')
+                  .toString();
           city = city.replaceAll('市', '').replaceAll('地区', '').trim();
-          final district = (address['suburb'] ??
-                  address['district'] ??
-                  address['county'] ??
-                  '')
+          final district =
+              (address['suburb'] ??
+                      address['district'] ??
+                      address['county'] ??
+                      '')
+                  .toString();
+          final township =
+              (address['town'] ??
+                      address['village'] ??
+                      address['hamlet'] ??
+                      address['suburb'] ??
+                      '')
+                  .toString();
+          final road = (address['road'] ?? address['neighbourhood'] ?? '')
               .toString();
-          final township = (address['town'] ??
-                  address['village'] ??
-                  address['hamlet'] ??
-                  address['suburb'] ??
-                  '')
-              .toString();
-          final road =
-              (address['road'] ?? address['neighbourhood'] ?? '').toString();
           final displayName = data['display_name']?.toString();
 
           return {
@@ -515,7 +533,8 @@ class LocationService {
     final double dLat = _degToRad(lat2 - lat1);
     final double dLon = _degToRad(lon2 - lon1);
 
-    final double a = sin(dLat / 2) * sin(dLat / 2) +
+    final double a =
+        sin(dLat / 2) * sin(dLat / 2) +
         cos(_degToRad(lat1)) *
             cos(_degToRad(lat2)) *
             sin(dLon / 2) *
@@ -543,255 +562,295 @@ class LocationService {
   static final List<TownshipAnchor> townshipDatabase = [
     // 荆门市核心城区
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '东宝区',
-        townName: '象山/龙泉街道',
-        latitude: 31.0450,
-        longitude: 112.2010),
+      cityName: '荆门',
+      districtName: '东宝区',
+      townName: '象山/龙泉街道',
+      latitude: 31.0450,
+      longitude: 112.2010,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '东宝区',
-        townName: '泉口街道',
-        latitude: 31.0550,
-        longitude: 112.1950),
+      cityName: '荆门',
+      districtName: '东宝区',
+      townName: '泉口街道',
+      latitude: 31.0550,
+      longitude: 112.1950,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '掇刀区',
-        townName: '掇刀石街道',
-        latitude: 31.0120,
-        longitude: 112.2180),
+      cityName: '荆门',
+      districtName: '掇刀区',
+      townName: '掇刀石街道',
+      latitude: 31.0120,
+      longitude: 112.2180,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '掇刀区',
-        townName: '白庙街道',
-        latitude: 31.0310,
-        longitude: 112.2350),
+      cityName: '荆门',
+      districtName: '掇刀区',
+      townName: '白庙街道',
+      latitude: 31.0310,
+      longitude: 112.2350,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '漳河新区',
-        townName: '漳河镇',
-        latitude: 31.0020,
-        longitude: 112.1650),
+      cityName: '荆门',
+      districtName: '漳河新区',
+      townName: '漳河镇',
+      latitude: 31.0020,
+      longitude: 112.1650,
+    ),
 
     // 荆门市各乡镇/郊区（离城区 15km~70km）
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '东宝区',
-        townName: '牌楼镇',
-        latitude: 31.1120,
-        longitude: 112.2450),
+      cityName: '荆门',
+      districtName: '东宝区',
+      townName: '牌楼镇',
+      latitude: 31.1120,
+      longitude: 112.2450,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '东宝区',
-        townName: '子陵铺镇',
-        latitude: 31.1560,
-        longitude: 112.1780),
+      cityName: '荆门',
+      districtName: '东宝区',
+      townName: '子陵铺镇',
+      latitude: 31.1560,
+      longitude: 112.1780,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '东宝区',
-        townName: '石桥驿镇',
-        latitude: 31.2450,
-        longitude: 112.1520),
+      cityName: '荆门',
+      districtName: '东宝区',
+      townName: '石桥驿镇',
+      latitude: 31.2450,
+      longitude: 112.1520,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '东宝区',
-        townName: '栗溪镇',
-        latitude: 31.3120,
-        longitude: 111.9850),
+      cityName: '荆门',
+      districtName: '东宝区',
+      townName: '栗溪镇',
+      latitude: 31.3120,
+      longitude: 111.9850,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '东宝区',
-        townName: '仙居乡',
-        latitude: 31.3650,
-        longitude: 112.0820),
+      cityName: '荆门',
+      districtName: '东宝区',
+      townName: '仙居乡',
+      latitude: 31.3650,
+      longitude: 112.0820,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '掇刀区',
-        townName: '团林铺镇',
-        latitude: 30.9120,
-        longitude: 112.2280),
+      cityName: '荆门',
+      districtName: '掇刀区',
+      townName: '团林铺镇',
+      latitude: 30.9120,
+      longitude: 112.2280,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '掇刀区',
-        townName: '麻城镇',
-        latitude: 30.9380,
-        longitude: 112.3520),
+      cityName: '荆门',
+      districtName: '掇刀区',
+      townName: '麻城镇',
+      latitude: 30.9380,
+      longitude: 112.3520,
+    ),
 
     // 钟祥市各乡镇（距城区 35km~80km）
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '钟祥市',
-        townName: '郢中街道',
-        latitude: 31.1680,
-        longitude: 112.5850),
+      cityName: '荆门',
+      districtName: '钟祥市',
+      townName: '郢中街道',
+      latitude: 31.1680,
+      longitude: 112.5850,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '钟祥市',
-        townName: '胡集镇',
-        latitude: 31.4250,
-        longitude: 112.3150),
+      cityName: '荆门',
+      districtName: '钟祥市',
+      townName: '胡集镇',
+      latitude: 31.4250,
+      longitude: 112.3150,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '钟祥市',
-        townName: '柴胡镇',
-        latitude: 31.0820,
-        longitude: 112.4580),
+      cityName: '荆门',
+      districtName: '钟祥市',
+      townName: '柴胡镇',
+      latitude: 31.0820,
+      longitude: 112.4580,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '钟祥市',
-        townName: '石牌镇',
-        latitude: 31.0250,
-        longitude: 112.4120),
+      cityName: '荆门',
+      districtName: '钟祥市',
+      townName: '石牌镇',
+      latitude: 31.0250,
+      longitude: 112.4120,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '钟祥市',
-        townName: '洋梓镇',
-        latitude: 31.2580,
-        longitude: 112.6320),
+      cityName: '荆门',
+      districtName: '钟祥市',
+      townName: '洋梓镇',
+      latitude: 31.2580,
+      longitude: 112.6320,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '钟祥市',
-        townName: '冷水镇',
-        latitude: 31.3250,
-        longitude: 112.4850),
+      cityName: '荆门',
+      districtName: '钟祥市',
+      townName: '冷水镇',
+      latitude: 31.3250,
+      longitude: 112.4850,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '钟祥市',
-        townName: '旧口镇',
-        latitude: 30.9250,
-        longitude: 112.6450),
+      cityName: '荆门',
+      districtName: '钟祥市',
+      townName: '旧口镇',
+      latitude: 30.9250,
+      longitude: 112.6450,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '钟祥市',
-        townName: '丰乐镇',
-        latitude: 31.3850,
-        longitude: 112.4120),
+      cityName: '荆门',
+      districtName: '钟祥市',
+      townName: '丰乐镇',
+      latitude: 31.3850,
+      longitude: 112.4120,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '钟祥市',
-        townName: '磷矿镇',
-        latitude: 31.2850,
-        longitude: 112.4280),
+      cityName: '荆门',
+      districtName: '钟祥市',
+      townName: '磷矿镇',
+      latitude: 31.2850,
+      longitude: 112.4280,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '钟祥市',
-        townName: '双路/长滩',
-        latitude: 31.1850,
-        longitude: 112.7520),
+      cityName: '荆门',
+      districtName: '钟祥市',
+      townName: '双路/长滩',
+      latitude: 31.1850,
+      longitude: 112.7520,
+    ),
 
     // 沙洋县各乡镇（距城区 25km~65km）
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '沙洋县',
-        townName: '沙洋镇',
-        latitude: 30.7050,
-        longitude: 112.5880),
+      cityName: '荆门',
+      districtName: '沙洋县',
+      townName: '沙洋镇',
+      latitude: 30.7050,
+      longitude: 112.5880,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '沙洋县',
-        townName: '五里铺镇',
-        latitude: 30.8520,
-        longitude: 112.2150),
+      cityName: '荆门',
+      districtName: '沙洋县',
+      townName: '五里铺镇',
+      latitude: 30.8520,
+      longitude: 112.2150,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '沙洋县',
-        townName: '十里铺镇',
-        latitude: 30.7650,
-        longitude: 112.2450),
+      cityName: '荆门',
+      districtName: '沙洋县',
+      townName: '十里铺镇',
+      latitude: 30.7650,
+      longitude: 112.2450,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '沙洋县',
-        townName: '纪山镇',
-        latitude: 30.6850,
-        longitude: 112.2680),
+      cityName: '荆门',
+      districtName: '沙洋县',
+      townName: '纪山镇',
+      latitude: 30.6850,
+      longitude: 112.2680,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '沙洋县',
-        townName: '拾回桥镇',
-        latitude: 30.7120,
-        longitude: 112.3850),
+      cityName: '荆门',
+      districtName: '沙洋县',
+      townName: '拾回桥镇',
+      latitude: 30.7120,
+      longitude: 112.3850,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '沙洋县',
-        townName: '后港镇',
-        latitude: 30.6050,
-        longitude: 112.3850),
+      cityName: '荆门',
+      districtName: '沙洋县',
+      townName: '后港镇',
+      latitude: 30.6050,
+      longitude: 112.3850,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '沙洋县',
-        townName: '毛李镇',
-        latitude: 30.5980,
-        longitude: 112.5520),
+      cityName: '荆门',
+      districtName: '沙洋县',
+      townName: '毛李镇',
+      latitude: 30.5980,
+      longitude: 112.5520,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '沙洋县',
-        townName: '官当镇',
-        latitude: 30.6350,
-        longitude: 112.6450),
+      cityName: '荆门',
+      districtName: '沙洋县',
+      townName: '官当镇',
+      latitude: 30.6350,
+      longitude: 112.6450,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '沙洋县',
-        townName: '高阳镇',
-        latitude: 30.8250,
-        longitude: 112.4580),
+      cityName: '荆门',
+      districtName: '沙洋县',
+      townName: '高阳镇',
+      latitude: 30.8250,
+      longitude: 112.4580,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '沙洋县',
-        townName: '马良镇',
-        latitude: 30.6950,
-        longitude: 112.7250),
+      cityName: '荆门',
+      districtName: '沙洋县',
+      townName: '马良镇',
+      latitude: 30.6950,
+      longitude: 112.7250,
+    ),
 
     // 京山市各乡镇（距城区 50km~90km）
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '京山市',
-        townName: '新市街道',
-        latitude: 31.0250,
-        longitude: 113.0150),
+      cityName: '荆门',
+      districtName: '京山市',
+      townName: '新市街道',
+      latitude: 31.0250,
+      longitude: 113.0150,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '京山市',
-        townName: '宋河镇',
-        latitude: 31.2580,
-        longitude: 113.0650),
+      cityName: '荆门',
+      districtName: '京山市',
+      townName: '宋河镇',
+      latitude: 31.2580,
+      longitude: 113.0650,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '京山市',
-        townName: '永漋镇',
-        latitude: 30.8520,
-        longitude: 113.0850),
+      cityName: '荆门',
+      districtName: '京山市',
+      townName: '永漋镇',
+      latitude: 30.8520,
+      longitude: 113.0850,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '京山市',
-        townName: '曹武镇',
-        latitude: 30.9350,
-        longitude: 113.1950),
+      cityName: '荆门',
+      districtName: '京山市',
+      townName: '曹武镇',
+      latitude: 30.9350,
+      longitude: 113.1950,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '京山市',
-        townName: '罗店镇',
-        latitude: 31.1520,
-        longitude: 113.2150),
+      cityName: '荆门',
+      districtName: '京山市',
+      townName: '罗店镇',
+      latitude: 31.1520,
+      longitude: 113.2150,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '京山市',
-        townName: '钱场镇',
-        latitude: 30.9150,
-        longitude: 113.0250),
+      cityName: '荆门',
+      districtName: '京山市',
+      townName: '钱场镇',
+      latitude: 30.9150,
+      longitude: 113.0250,
+    ),
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '京山市',
-        townName: '雁门口镇',
-        latitude: 31.0520,
-        longitude: 112.8250),
+      cityName: '荆门',
+      districtName: '京山市',
+      townName: '雁门口镇',
+      latitude: 31.0520,
+      longitude: 112.8250,
+    ),
 
     // 屈家岭管理区
     const TownshipAnchor(
-        cityName: '荆门',
-        districtName: '屈家岭',
-        townName: '易家岭街道/屈家岭镇',
-        latitude: 30.8420,
-        longitude: 112.8950),
+      cityName: '荆门',
+      districtName: '屈家岭',
+      townName: '易家岭街道/屈家岭镇',
+      latitude: 30.8420,
+      longitude: 112.8950,
+    ),
   ];
 
   /// 寻找最近的乡镇基准点 (用于农村/乡下环境的精准路网识别)

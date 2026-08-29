@@ -21,13 +21,13 @@ class ProvinceFuelPrice {
   });
 
   ProvinceFuelPrice.unavailable(this.province)
-      : gas92 = 0,
-        gas95 = 0,
-        gas98 = 0,
-        diesel0 = 0,
-        lastChangeAmount = 0,
-        lastChangeDate = DateTime(1970),
-        isAvailable = false;
+    : gas92 = 0,
+      gas95 = 0,
+      gas98 = 0,
+      diesel0 = 0,
+      lastChangeAmount = 0,
+      lastChangeDate = DateTime(1970),
+      isAvailable = false;
 }
 
 class AdjustmentForecast {
@@ -148,9 +148,9 @@ class FuelPriceService {
 
   static String cityToProvince(String provinceOrCity) {
     final normalized = provinceOrCity.trim().replaceFirst(
-          RegExp(r'(自治区|自治州|地区|省|市)$'),
-          '',
-        );
+      RegExp(r'(自治区|自治州|地区|省|市)$'),
+      '',
+    );
     if (_supportedProvinces.contains(normalized)) return normalized;
     return _cityProvince[normalized] ?? normalized;
   }

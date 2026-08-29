@@ -66,7 +66,8 @@ class RefuelRecordModel {
     return RefuelRecordModel(
       id: map['id'] as String,
       vehicleId: map['vehicle_id'] as String,
-      refuelDate: DateTime.tryParse(map['refuel_date'] as String? ?? '') ??
+      refuelDate:
+          DateTime.tryParse(map['refuel_date'] as String? ?? '') ??
           DateTime.now(),
       mileage: (map['mileage'] as num).toDouble(),
       fuelAmount: (map['fuel_amount'] as num).toDouble(),
@@ -80,7 +81,8 @@ class RefuelRecordModel {
       fuelConsumption: (map['fuel_consumption'] as num?)?.toDouble(),
       costPerKm: (map['cost_per_km'] as num?)?.toDouble(),
       distance: (map['distance'] as num?)?.toDouble(),
-      createdAt: DateTime.tryParse(map['created_at'] as String? ?? '') ??
+      createdAt:
+          DateTime.tryParse(map['created_at'] as String? ?? '') ??
           DateTime.now(),
     );
   }

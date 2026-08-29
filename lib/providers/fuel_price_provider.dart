@@ -75,8 +75,8 @@ class FuelPriceProvider extends ChangeNotifier {
             : FuelPriceService.cityToProvince(savedProvince);
         _currentProvince =
             FuelPriceService.getAllProvinces().contains(cityProvince)
-                ? cityProvince
-                : savedProvinceValue;
+            ? cityProvince
+            : savedProvinceValue;
         notifyListeners();
         await _loadRemotePriceForCity(_currentCity);
       } else {

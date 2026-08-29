@@ -1,5 +1,7 @@
 import 'package:bearfuel/core/theme/app_icons.dart';
+import '../../core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
+import '../../core/constants/china_cities.dart';
 import '../../core/utils/location_service.dart';
 
 /// 仿天气软件的高颜值城市与地区选择弹窗
@@ -44,52 +46,6 @@ class _CityPickerSheetState extends State<CityPickerSheet> {
   bool _isLocating = false;
   String? _locatedCity;
 
-  // 国内热门城市列表 (参照主流天气 App 排序，优先包含荆门、武汉等重点地市)
-  static const List<String> _domesticHotCities = [
-    '北京',
-    '上海',
-    '广州',
-    '深圳',
-    '天津',
-    '杭州',
-    '东莞',
-    '宁波',
-    '西安',
-    '成都',
-    '重庆',
-    '南京',
-    '苏州',
-    '武汉',
-    '厦门',
-    '福州',
-    '昆明',
-    '沈阳',
-    '长春',
-    '大连',
-    '荆门',
-    '宜昌',
-    '襄阳',
-    '荆州',
-    '长沙',
-    '郑州',
-    '济南',
-    '青岛',
-    '合肥',
-    '南昌',
-    '南宁',
-    '贵阳',
-    '海口',
-    '三亚',
-    '哈尔滨',
-    '太原',
-    '兰州',
-    '乌鲁木齐',
-    '呼和浩特',
-    '银川',
-    '西宁',
-    '拉萨',
-  ];
-
   // 国际热门城市列表
   static const List<String> _internationalHotCities = [
     '纽约',
@@ -109,21 +65,9 @@ class _CityPickerSheetState extends State<CityPickerSheet> {
   @override
   void initState() {
     super.initState();
+    // 仅回显外部已获取的定位城市；不在此处自动请求 GPS 权限，
+    // 用户点击"定位城市"按钮时才触发定位。
     _locatedCity = widget.currentGpsLocation?.cityName;
-    if (_locatedCity == null || _locatedCity!.isEmpty) {
-      _silentGpsLocate();
-    }
-  }
-
-  Future<void> _silentGpsLocate() async {
-    try {
-      final result = await LocationService.getCurrentLocation();
-      if (mounted && result.isSuccess && result.location != null) {
-        setState(() {
-          _locatedCity = result.location!.cityName;
-        });
-      }
-    } catch (_) {}
   }
 
   @override
@@ -170,13 +114,16 @@ class _CityPickerSheetState extends State<CityPickerSheet> {
     final bgColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
     final cardBg = isDark ? const Color(0xFF2C2C2C) : const Color(0xFFF3F4F6);
     final query = _searchController.text.trim();
+    // 键盘弹出时压缩面板高度，保证搜索结果不被输入法遮挡
+    final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
+    final sheetHeight = MediaQuery.of(context).size.height * 0.88;
 
     return Material(
       color: bgColor,
       borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       clipBehavior: Clip.antiAlias,
       child: Container(
-        height: MediaQuery.of(context).size.height * 0.88,
+        height: keyboardInset > 0 ? sheetHeight - keyboardInset : sheetHeight,
         padding: const EdgeInsets.only(top: 16, left: 16, right: 16),
         child: SafeArea(
           top: false,
@@ -197,7 +144,7 @@ class _CityPickerSheetState extends State<CityPickerSheet> {
                         prefixIcon: Icon(
                           AppIcons.search,
                           color: query.isNotEmpty
-                              ? const Color(0xFFFF5A24)
+                              ? AppBrandColors.brand
                               : colors.onSurfaceVariant,
                         ),
                         suffixIcon: query.isNotEmpty
@@ -218,7 +165,7 @@ class _CityPickerSheetState extends State<CityPickerSheet> {
                   TextButton(
                     onPressed: () => Navigator.pop(context),
                     style: TextButton.styleFrom(
-                      foregroundColor: const Color(0xFFFF5A24),
+                      foregroundColor: AppBrandColors.brand,
                       padding: const EdgeInsets.symmetric(horizontal: 4),
                     ),
                     child: const Text('取消'),
@@ -240,32 +187,17 @@ class _CityPickerSheetState extends State<CityPickerSheet> {
     );
   }
 
-  /// 搜索实时匹配结果
+  /// 搜索实时匹配结果（覆盖全国城市，支持中文名/省份/全拼/首字母）
   Widget _buildSearchResults(String query, bool isDark, Color cardBg) {
     final colors = Theme.of(context).colorScheme;
-    final allCities = {
-      ..._domesticHotCities,
-      '荆门',
-      '武汉',
-      '襄阳',
-      '宜昌',
-      '十堰',
-      '荆州',
-      '黄石',
-      '黄冈',
-      '鄂州',
-      '咸宁',
-      '随州',
-      '恩施',
-      '仙桃',
-      '潜江',
-      '天门',
-      '神农架',
-    }.toList();
+    final matches = ChinaCities.search(query);
 
-    final matches = allCities.where((c) => c.contains(query)).toList();
+    // 非仅国内模式时，附加热门国际城市的名称匹配
+    final internationalMatches = widget.domesticOnly
+        ? const <String>[]
+        : _internationalHotCities.where((c) => c.contains(query)).toList();
 
-    if (matches.isEmpty) {
+    if (matches.isEmpty && internationalMatches.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -280,42 +212,64 @@ class _CityPickerSheetState extends State<CityPickerSheet> {
               '未找到包含 “$query” 的城市',
               style: TextStyle(color: colors.onSurfaceVariant),
             ),
+            const SizedBox(height: 6),
+            Text(
+              '支持城市名、省份、拼音（wenzhou）或首字母（wz）',
+              style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
+            ),
           ],
         ),
       );
     }
 
+    final totalCount = matches.length + internationalMatches.length;
     return ListView.separated(
-      itemCount: matches.length,
-      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemCount: totalCount,
+      separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (context, index) {
-        final city = matches[index];
-        final isCurrent = city == widget.currentCity;
-
-        return ListTile(
-          leading: Icon(
-            AppIcons.location_city,
-            color:
-                isCurrent ? const Color(0xFFFF5A24) : colors.onSurfaceVariant,
-          ),
-          title: Text(
-            city,
-            style: TextStyle(
-              fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-              color: isCurrent ? const Color(0xFFFF5A24) : null,
+        if (index < matches.length) {
+          final city = matches[index];
+          final isCurrent = city.name == widget.currentCity;
+          return ListTile(
+            leading: Icon(
+              AppIcons.location_city,
+              color: isCurrent ? AppBrandColors.brand : colors.onSurfaceVariant,
             ),
+            title: Text(
+              city.name,
+              style: TextStyle(
+                fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                color: isCurrent ? AppBrandColors.brand : null,
+              ),
+            ),
+            subtitle: Text(
+              city.province,
+              style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
+            ),
+            trailing: isCurrent
+                ? const Icon(
+                    AppIcons.check_circle,
+                    color: AppBrandColors.brand,
+                    size: 20,
+                  )
+                : Icon(
+                    AppIcons.chevron_right,
+                    size: 18,
+                    color: colors.onSurfaceVariant,
+                  ),
+            onTap: () => Navigator.pop(context, city.name),
+          );
+        }
+
+        final city = internationalMatches[index - matches.length];
+        return ListTile(
+          leading: Icon(AppIcons.globe, color: colors.onSurfaceVariant),
+          title: Text(city),
+          trailing: Icon(
+            AppIcons.chevron_right,
+            size: 18,
+            color: colors.onSurfaceVariant,
           ),
-          trailing: isCurrent
-              ? const Icon(
-                  AppIcons.check_circle,
-                  color: Color(0xFFFF5A24),
-                  size: 20,
-                )
-              : Icon(
-                  AppIcons.chevron_right,
-                  size: 18,
-                  color: colors.onSurfaceVariant,
-                ),
           onTap: () => Navigator.pop(context, city),
         );
       },
@@ -326,8 +280,9 @@ class _CityPickerSheetState extends State<CityPickerSheet> {
   Widget _buildHotCitySections(bool isDark, Color cardBg) {
     final colors = Theme.of(context).colorScheme;
     // 默认展示前 17 个城市 + 1个定位按钮 = 18个格子 (6排)
-    final displayedCities =
-        _isExpanded ? _domesticHotCities : _domesticHotCities.take(17).toList();
+    final displayedCities = _isExpanded
+        ? ChinaCities.hotCities
+        : ChinaCities.hotCities.take(17).toList();
 
     return SingleChildScrollView(
       child: Column(
@@ -474,7 +429,7 @@ class _CityPickerSheetState extends State<CityPickerSheet> {
                   height: 14,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: Color(0xFF2196F3),
+                    color: AppBrandColors.infoBlue,
                   ),
                 )
               : Row(
@@ -483,7 +438,7 @@ class _CityPickerSheetState extends State<CityPickerSheet> {
                     const Icon(
                       AppIcons.location_on,
                       size: 14,
-                      color: Color(0xFF2196F3),
+                      color: AppBrandColors.infoBlue,
                     ),
                     const SizedBox(width: 3),
                     Flexible(
@@ -492,7 +447,7 @@ class _CityPickerSheetState extends State<CityPickerSheet> {
                         style: const TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF2196F3),
+                          color: AppBrandColors.infoBlue,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -530,8 +485,9 @@ class _CityPickerSheetState extends State<CityPickerSheet> {
               fontSize: 14,
               fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
               color: isSelected
-                  ? const Color(0xFF2196F3) // 选中城市文字变蓝 (参照截图)
-                  : (isDark ? colors.onSurface : const Color(0xFF333333)),
+                  ? AppBrandColors
+                        .infoBlue // 选中城市文字变蓝 (参照截图)
+                  : (isDark ? colors.onSurface : AppBrandColors.textPrimary),
             ),
           ),
         ),

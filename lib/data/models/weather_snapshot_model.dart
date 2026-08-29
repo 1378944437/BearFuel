@@ -39,24 +39,25 @@ class WeatherSnapshotModel {
   String get dateKey => snapshotDate.toIso8601String().substring(0, 10);
 
   Map<String, dynamic> toMap() => {
-        'id': '$cityKey|$dateKey',
-        'city_key': cityKey,
-        'city_name': cityName,
-        'province': province,
-        'snapshot_date': dateKey,
-        'temperature': temperature,
-        'temp_high': tempHigh,
-        'temp_low': tempLow,
-        'condition': condition,
-        'aqi': aqi,
-        'source': source,
-        'fetched_at': fetchedAt.toIso8601String(),
-      };
+    'id': '$cityKey|$dateKey',
+    'city_key': cityKey,
+    'city_name': cityName,
+    'province': province,
+    'snapshot_date': dateKey,
+    'temperature': temperature,
+    'temp_high': tempHigh,
+    'temp_low': tempLow,
+    'condition': condition,
+    'aqi': aqi,
+    'source': source,
+    'fetched_at': fetchedAt.toIso8601String(),
+  };
 
   factory WeatherSnapshotModel.fromMap(Map<String, dynamic> map) {
     double? number(dynamic value) =>
         value is num ? value.toDouble() : double.tryParse('$value');
-    final date = DateTime.tryParse('${map['snapshot_date'] ?? ''}') ??
+    final date =
+        DateTime.tryParse('${map['snapshot_date'] ?? ''}') ??
         DateTime.fromMillisecondsSinceEpoch(0);
     return WeatherSnapshotModel(
       cityKey: map['city_key'] as String? ?? '',

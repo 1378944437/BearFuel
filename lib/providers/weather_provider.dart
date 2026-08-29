@@ -23,8 +23,8 @@ class WeatherProvider extends ChangeNotifier {
   WeatherSnapshotModel? get current => _current;
   List<WeatherSnapshotModel> get snapshots => List.unmodifiable(_snapshots);
   HistoricalDataWindow get historyWindow => HistoricalDataWindow.fromDates(
-        _snapshots.map((snapshot) => snapshot.snapshotDate),
-      );
+    _snapshots.map((snapshot) => snapshot.snapshotDate),
+  );
   String get statusText => _statusText;
   bool get isRefreshing => _isRefreshing;
   UserLocation? get actualLocation => _actualLocation;

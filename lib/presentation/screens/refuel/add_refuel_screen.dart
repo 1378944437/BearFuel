@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/config/app_config.dart';
 import '../../../core/utils/validators.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../../core/utils/input_formatters.dart';
@@ -38,6 +39,7 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
   late bool _isForgotPrevious;
 
   bool _isAutoCalculating = false;
+  bool _isSaving = false; // 防止连点保存产生重复记录
 
   @override
   void initState() {
@@ -67,7 +69,8 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
     );
     _noteController = TextEditingController(text: edit?.note ?? '');
 
-    _selectedFuelType = edit?.fuelType ??
+    _selectedFuelType =
+        edit?.fuelType ??
         (currentVehicle?.defaultFuelType ??
             refuelProv.latestFuelType ??
             FuelType.gas92);
@@ -187,6 +190,7 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
 
   /// 保存加油记录
   Future<void> _saveRecord() async {
+    if (_isSaving) return; // 写入进行中，忽略重复点击
     if (!_formKey.currentState!.validate()) return;
 
     final vehicleProv = context.read<VehicleProvider>();
@@ -194,57 +198,69 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
     final currentVehicle = vehicleProv.currentVehicle;
 
     if (currentVehicle == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先添加或选择一辆爱车')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请先添加或选择一辆爱车')));
       return;
     }
 
     HapticFeedback.lightImpact();
+    setState(() => _isSaving = true);
 
-    final mileage = double.parse(_mileageController.text.trim());
-    final fuelAmount = double.parse(_amountController.text.trim());
-    final unitPrice = double.parse(_unitPriceController.text.trim());
-    final totalPrice = double.parse(_totalPriceController.text.trim());
+    try {
+      final mileage = double.parse(_mileageController.text.trim());
+      final fuelAmount = double.parse(_amountController.text.trim());
+      final unitPrice = double.parse(_unitPriceController.text.trim());
+      final totalPrice = double.parse(_totalPriceController.text.trim());
 
-    final isEdit = widget.editRecord != null;
-    final record = RefuelRecordModel(
-      id: isEdit ? widget.editRecord!.id : const Uuid().v4(),
-      vehicleId: widget.editRecord?.vehicleId ?? currentVehicle.id,
-      refuelDate: _selectedDate,
-      mileage: mileage,
-      fuelAmount: fuelAmount,
-      unitPrice: unitPrice,
-      totalPrice: totalPrice,
-      fuelType: _selectedFuelType,
-      gasStation: _stationController.text.trim().isEmpty
-          ? null
-          : _stationController.text.trim(),
-      isFullTank: _isFullTank,
-      isForgotPrevious: _isForgotPrevious,
-      note: _noteController.text.trim().isEmpty
-          ? null
-          : _noteController.text.trim(),
-    );
+      final isEdit = widget.editRecord != null;
+      final record = RefuelRecordModel(
+        id: isEdit ? widget.editRecord!.id : const Uuid().v4(),
+        vehicleId: widget.editRecord?.vehicleId ?? currentVehicle.id,
+        refuelDate: _selectedDate,
+        mileage: mileage,
+        fuelAmount: fuelAmount,
+        unitPrice: unitPrice,
+        totalPrice: totalPrice,
+        fuelType: _selectedFuelType,
+        gasStation: _stationController.text.trim().isEmpty
+            ? null
+            : _stationController.text.trim(),
+        isFullTank: _isFullTank,
+        isForgotPrevious: _isForgotPrevious,
+        note: _noteController.text.trim().isEmpty
+            ? null
+            : _noteController.text.trim(),
+      );
 
-    final success = isEdit
-        ? await refuelProv.updateRecord(record)
-        : await refuelProv.addRecord(record);
+      final success = isEdit
+          ? await refuelProv.updateRecord(record)
+          : await refuelProv.addRecord(record);
 
-    if (mounted) {
-      if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(isEdit ? '加油记录已更新' : '加油记录保存成功'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        Navigator.pop(context);
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('保存失败，请检查输入')),
-        );
+      if (mounted) {
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(isEdit ? '加油记录已更新' : '加油记录保存成功'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.pop(context);
+        } else {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('保存失败，请检查输入')));
+        }
       }
+    } catch (e) {
+      AppConfig.log('保存加油记录异常: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('保存异常，请重试')));
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -262,7 +278,7 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
           IconButton(
             icon: const Icon(AppIcons.check, size: 26),
             tooltip: '保存',
-            onPressed: _saveRecord,
+            onPressed: _isSaving ? null : _saveRecord,
           ),
         ],
       ),
@@ -275,13 +291,17 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
             Card(
               margin: EdgeInsets.zero,
               child: ListTile(
-                leading: const Icon(AppIcons.calendar_today,
-                    color: Color(0xFFFF5A24)),
+                leading: const Icon(
+                  AppIcons.calendar_today,
+                  color: Color(0xFFFF5A24),
+                ),
                 title: const Text('加油时间', style: TextStyle(fontSize: 14)),
                 trailing: Text(
                   DateFormatter.formatYmdHm(_selectedDate),
                   style: const TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 14),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
                 ),
                 onTap: _pickDateTime,
               ),
@@ -302,28 +322,35 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
                         const Text(
                           '当前表显总里程',
                           style: TextStyle(
-                              fontSize: 15, fontWeight: FontWeight.bold),
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         if (lastMileage > 0)
                           Text(
                             '上次里程: ${lastMileage.toStringAsFixed(1)} km',
                             style: TextStyle(
-                                fontSize: 12, color: colors.onSurfaceVariant),
+                              fontSize: 12,
+                              color: colors.onSurfaceVariant,
+                            ),
                           ),
                       ],
                     ),
                     const SizedBox(height: 8),
                     TextFormField(
                       controller: _mileageController,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       inputFormatters: [AppInputFormatters.decimal2],
                       decoration: InputDecoration(
                         hintText: '输入仪表盘总里程',
                         hintStyle: TextStyle(
-                            fontSize: 11,
-                            color: colors.onSurfaceVariant
-                                .withValues(alpha: 0.75)),
+                          fontSize: 11,
+                          color: colors.onSurfaceVariant.withValues(
+                            alpha: 0.75,
+                          ),
+                        ),
                         suffixText: 'km',
                         prefixIcon: const Icon(AppIcons.speed),
                       ),
@@ -331,18 +358,21 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
                         val,
                         lastMileage:
                             widget.editRecord == null && lastMileage > 0
-                                ? lastMileage
-                                : null,
+                            ? lastMileage
+                            : null,
                       ),
                     ),
                     if (lastMileage > 0 && !isEdit) ...[
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          Text('快捷累加: ',
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  color: colors.onSurfaceVariant)),
+                          Text(
+                            '快捷累加: ',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: colors.onSurfaceVariant,
+                            ),
+                          ),
                           ...[50.0, 100.0, 200.0, 500.0].map((inc) {
                             return Padding(
                               padding: const EdgeInsets.only(right: 6),
@@ -352,17 +382,23 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
                                 borderRadius: BorderRadius.circular(4),
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(
-                                      horizontal: 6, vertical: 2),
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFFFF5A24)
-                                        .withValues(alpha: 0.1),
+                                    color: const Color(
+                                      0xFFFF5A24,
+                                    ).withValues(alpha: 0.1),
                                     borderRadius: BorderRadius.circular(4),
                                   ),
-                                  child: Text('+${inc.toInt()}km',
-                                      style: const TextStyle(
-                                          fontSize: 11,
-                                          color: Color(0xFFFF5A24),
-                                          fontWeight: FontWeight.bold)),
+                                  child: Text(
+                                    '+${inc.toInt()}km',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xFFFF5A24),
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
                                 ),
                               ),
                             );
@@ -390,7 +426,9 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
                         Text(
                           '燃油数据（输入任意两项自动换算）',
                           style: TextStyle(
-                              fontSize: 15, fontWeight: FontWeight.bold),
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ],
                     ),
@@ -398,9 +436,13 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
                     // 快捷金额胶囊
                     Row(
                       children: [
-                        Text('快捷金额: ',
-                            style: TextStyle(
-                                fontSize: 11, color: colors.onSurfaceVariant)),
+                        Text(
+                          '快捷金额: ',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: colors.onSurfaceVariant,
+                          ),
+                        ),
                         ...[100.0, 200.0, 300.0, 400.0, 500.0].map((amt) {
                           return Padding(
                             padding: const EdgeInsets.only(right: 6),
@@ -409,16 +451,21 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
                               borderRadius: BorderRadius.circular(4),
                               child: Container(
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 2),
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
                                 decoration: BoxDecoration(
                                   color: Colors.blue.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
-                                child: Text('¥${amt.toInt()}',
-                                    style: const TextStyle(
-                                        fontSize: 11,
-                                        color: Colors.blue,
-                                        fontWeight: FontWeight.bold)),
+                                child: Text(
+                                  '¥${amt.toInt()}',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.blue,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                               ),
                             ),
                           );
@@ -428,17 +475,20 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: _amountController,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       inputFormatters: [AppInputFormatters.decimal2],
                       style: TextStyle(color: colors.onSurface),
                       decoration: InputDecoration(
                         labelText: '加油量',
                         hintText: '如 45.50',
                         hintStyle: TextStyle(
-                            fontSize: 11,
-                            color: colors.onSurfaceVariant
-                                .withValues(alpha: 0.75)),
+                          fontSize: 11,
+                          color: colors.onSurfaceVariant.withValues(
+                            alpha: 0.75,
+                          ),
+                        ),
                         suffixText: 'L',
                         prefixIcon: const Icon(AppIcons.local_gas_station),
                       ),
@@ -453,19 +503,23 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
                           child: TextFormField(
                             controller: _unitPriceController,
                             keyboardType: const TextInputType.numberWithOptions(
-                                decimal: true),
+                              decimal: true,
+                            ),
                             inputFormatters: [AppInputFormatters.decimal2],
                             style: TextStyle(color: colors.onSurface),
                             decoration: InputDecoration(
                               labelText: '单价',
                               hintText: '如 8.25',
                               hintStyle: TextStyle(
-                                  fontSize: 11,
-                                  color: colors.onSurfaceVariant
-                                      .withValues(alpha: 0.75)),
+                                fontSize: 11,
+                                color: colors.onSurfaceVariant.withValues(
+                                  alpha: 0.75,
+                                ),
+                              ),
                               suffixText: '¥/L',
-                              prefixIcon:
-                                  const Icon(AppIcons.price_change_outlined),
+                              prefixIcon: const Icon(
+                                AppIcons.price_change_outlined,
+                              ),
                             ),
                             onChanged: _onUnitPriceChanged,
                             validator: (val) =>
@@ -477,23 +531,29 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
                           child: TextFormField(
                             controller: _totalPriceController,
                             keyboardType: const TextInputType.numberWithOptions(
-                                decimal: true),
+                              decimal: true,
+                            ),
                             inputFormatters: [AppInputFormatters.decimal2],
                             style: TextStyle(color: colors.onSurface),
                             decoration: InputDecoration(
                               labelText: '实付总金额',
                               hintText: '如 375.00',
                               hintStyle: TextStyle(
-                                  fontSize: 11,
-                                  color: colors.onSurfaceVariant
-                                      .withValues(alpha: 0.75)),
+                                fontSize: 11,
+                                color: colors.onSurfaceVariant.withValues(
+                                  alpha: 0.75,
+                                ),
+                              ),
                               suffixText: '¥',
-                              prefixIcon:
-                                  const Icon(AppIcons.monetization_on_outlined),
+                              prefixIcon: const Icon(
+                                AppIcons.monetization_on_outlined,
+                              ),
                             ),
                             onChanged: _onTotalPriceChanged,
-                            validator: (val) => Validators.positiveNumber(val,
-                                fieldName: '实付总额'),
+                            validator: (val) => Validators.positiveNumber(
+                              val,
+                              fieldName: '实付总额',
+                            ),
                           ),
                         ),
                       ],
@@ -514,8 +574,10 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
                   children: [
                     const Text(
                       '燃油标号',
-                      style:
-                          TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(height: 10),
                     Wrap(
@@ -527,8 +589,9 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
                           label: Text(type),
                           selected: isSelected,
                           showCheckmark: false,
-                          selectedColor:
-                              const Color(0xFFFF5A24).withValues(alpha: 0.18),
+                          selectedColor: const Color(
+                            0xFFFF5A24,
+                          ).withValues(alpha: 0.18),
                           labelStyle: TextStyle(
                             color: isSelected ? const Color(0xFFFF5A24) : null,
                             fontWeight: isSelected
@@ -602,13 +665,17 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
                         labelText: '加油站名称（最多40字）',
                         hintText: '如 中国石化金龙加油站',
                         hintStyle: TextStyle(
-                            fontSize: 11,
-                            color: colors.onSurfaceVariant
-                                .withValues(alpha: 0.75)),
+                          fontSize: 11,
+                          color: colors.onSurfaceVariant.withValues(
+                            alpha: 0.75,
+                          ),
+                        ),
                         prefixIcon: const Icon(AppIcons.storefront),
                         suffixIcon: IconButton(
-                          icon: const Icon(AppIcons.map_outlined,
-                              color: Color(0xFFFF5A24)),
+                          icon: const Icon(
+                            AppIcons.map_outlined,
+                            color: Color(0xFFFF5A24),
+                          ),
                           tooltip: '智能地图选站',
                           onPressed: () async {
                             HapticFeedback.lightImpact();
@@ -634,9 +701,11 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
                         labelText: '备注说明（最多100字）',
                         hintText: '记录优惠活动、高速路段或路况等',
                         hintStyle: TextStyle(
-                            fontSize: 11,
-                            color: colors.onSurfaceVariant
-                                .withValues(alpha: 0.75)),
+                          fontSize: 11,
+                          color: colors.onSurfaceVariant.withValues(
+                            alpha: 0.75,
+                          ),
+                        ),
                         prefixIcon: const Icon(AppIcons.note_alt_outlined),
                       ),
                     ),
@@ -648,17 +717,28 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
 
             // 保存大按钮
             ElevatedButton(
-              onPressed: _saveRecord,
+              onPressed: _isSaving ? null : _saveRecord,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFFF5A24),
                 foregroundColor: Colors.white,
                 minimumSize: const Size(double.infinity, 50),
               ),
-              child: Text(
-                isEdit ? '保存修改' : '保存加油记录',
-                style:
-                    const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
+              child: _isSaving
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : Text(
+                      isEdit ? '保存修改' : '保存加油记录',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
             ),
           ],
         ),

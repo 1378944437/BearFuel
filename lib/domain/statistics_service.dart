@@ -3,6 +3,7 @@ import '../data/models/refuel_record_model.dart';
 import '../data/models/expense_record_model.dart';
 import '../data/models/weather_snapshot_model.dart';
 import '../../core/utils/date_formatter.dart';
+import 'fuel_calculator.dart';
 
 /// 异常点智能诊断模型
 class AnomalyDiagnosticItem {
@@ -191,11 +192,13 @@ class _WeightedConsumption {
 class StatisticsService {
   /// 1. 生成单次百公里油耗变动趋势点序列
   static List<ChartDataPoint> getConsumptionTrend(
-      List<RefuelRecordModel> records) {
-    final validRecords = records
-        .where((r) => r.fuelConsumption != null && r.fuelConsumption! > 0)
-        .toList()
-      ..sort((a, b) => a.refuelDate.compareTo(b.refuelDate));
+    List<RefuelRecordModel> records,
+  ) {
+    final validRecords =
+        records
+            .where((r) => r.fuelConsumption != null && r.fuelConsumption! > 0)
+            .toList()
+          ..sort((a, b) => a.refuelDate.compareTo(b.refuelDate));
 
     return validRecords.map((r) {
       return ChartDataPoint(
@@ -209,7 +212,8 @@ class StatisticsService {
 
   /// 2. 生成累计平均油耗演进过程曲线 (Evolution Curve - 平滑收敛线)
   static List<ChartDataPoint> getMovingAverageEvolutionTrend(
-      List<RefuelRecordModel> records) {
+    List<RefuelRecordModel> records,
+  ) {
     final sorted = List<RefuelRecordModel>.from(records)
       ..sort((a, b) => a.refuelDate.compareTo(b.refuelDate));
 
@@ -262,7 +266,8 @@ class StatisticsService {
 
   /// 4. 每万公里阶段平均油耗阶梯统计 (带阶段诊断与上一阶段对比)
   static List<TenThousandKmStats> getTenThousandKmStats(
-      List<RefuelRecordModel> records) {
+    List<RefuelRecordModel> records,
+  ) {
     if (records.isEmpty) return [];
 
     final sorted = List<RefuelRecordModel>.from(records)
@@ -300,20 +305,28 @@ class StatisticsService {
           .where((r) => r.mileage >= stageStartKm && r.mileage < stageEndKm)
           .toList();
 
-      final validStageRecords = stageRecords.where((r) =>
-          r.fuelConsumption != null &&
-          r.fuelConsumption! > 0 &&
-          r.distance != null &&
-          r.distance! > 0);
-      final validDistance =
-          validStageRecords.fold(0.0, (sum, r) => sum + r.distance!);
+      final validStageRecords = stageRecords.where(
+        (r) =>
+            r.fuelConsumption != null &&
+            r.fuelConsumption! > 0 &&
+            r.distance != null &&
+            r.distance! > 0,
+      );
+      final validDistance = validStageRecords.fold(
+        0.0,
+        (sum, r) => sum + r.distance!,
+      );
       final validFuel = validStageRecords.fold(
-          0.0, (sum, r) => sum + (r.fuelConsumption! * r.distance!) / 100.0);
-      final avgCons =
-          validDistance > 0 ? (validFuel / validDistance) * 100.0 : 0.0;
+        0.0,
+        (sum, r) => sum + (r.fuelConsumption! * r.distance!) / 100.0,
+      );
+      final avgCons = validDistance > 0
+          ? (validFuel / validDistance) * 100.0
+          : 0.0;
 
-      final dist =
-          stageRecords.fold(0.0, (sum, r) => sum + (r.distance ?? 0.0));
+      final dist = stageRecords
+          .where(FuelCalculator.isCompletedCycleRecord)
+          .fold(0.0, (sum, r) => sum + (r.distance ?? 0.0));
       final fuel = stageRecords.fold(0.0, (sum, r) => sum + r.fuelAmount);
 
       double? diff;
@@ -342,7 +355,7 @@ class StatisticsService {
 
   /// 使用本地天气快照与加油记录按月份关联，支持跨年度长期趋势。
   static List<TemperatureVsConsumptionPoint>
-      getTemperatureVsConsumptionFromSnapshots(
+  getTemperatureVsConsumptionFromSnapshots(
     List<RefuelRecordModel> records,
     List<WeatherSnapshotModel> snapshots,
   ) {
@@ -352,8 +365,9 @@ class StatisticsService {
       if (temperature != null) {
         temperatures
             .putIfAbsent(
-                snapshot.snapshotDate.year * 100 + snapshot.snapshotDate.month,
-                () => [])
+              snapshot.snapshotDate.year * 100 + snapshot.snapshotDate.month,
+              () => [],
+            )
             .add(temperature);
       }
     }
@@ -427,7 +441,8 @@ class StatisticsService {
         key =
             '${r.refuelDate.year}-${r.refuelDate.month.toString().padLeft(2, '0')}';
       } else {
-        key = DateFormatter.formatMonthDay(r.refuelDate);
+        // 行程粒度：按完整日期分组，避免不同年份的同月同日被错误合并
+        key = DateFormatter.formatYmd(r.refuelDate);
       }
       groupedRefuel.putIfAbsent(key, () => []).add(r);
     }
@@ -443,7 +458,7 @@ class StatisticsService {
         key =
             '${e.expenseDate.year}-${e.expenseDate.month.toString().padLeft(2, '0')}';
       } else {
-        key = DateFormatter.formatMonthDay(e.expenseDate);
+        key = DateFormatter.formatYmd(e.expenseDate);
       }
       groupedExpense.putIfAbsent(key, () => []).add(e);
     }
@@ -456,23 +471,32 @@ class StatisticsService {
       final rList = groupedRefuel[k] ?? [];
       final eList = groupedExpense[k] ?? [];
 
-      final dist = rList.fold(0.0, (sum, r) => sum + (r.distance ?? 0.0));
+      final dist = rList
+          .where(FuelCalculator.isCompletedCycleRecord)
+          .fold(0.0, (sum, r) => sum + (r.distance ?? 0.0));
       final fuel = rList.fold(0.0, (sum, r) => sum + r.fuelAmount);
       final fuelCost = rList.fold(0.0, (sum, r) => sum + r.totalPrice);
       final otherCost = eList.fold(0.0, (sum, e) => sum + e.amount);
       final totalCost = fuelCost + otherCost;
 
-      final validRecords = rList.where((r) =>
-          r.fuelConsumption != null &&
-          r.fuelConsumption! > 0 &&
-          r.distance != null &&
-          r.distance! > 0);
-      final validDistance =
-          validRecords.fold(0.0, (sum, r) => sum + r.distance!);
+      final validRecords = rList.where(
+        (r) =>
+            r.fuelConsumption != null &&
+            r.fuelConsumption! > 0 &&
+            r.distance != null &&
+            r.distance! > 0,
+      );
+      final validDistance = validRecords.fold(
+        0.0,
+        (sum, r) => sum + r.distance!,
+      );
       final validFuel = validRecords.fold(
-          0.0, (sum, r) => sum + (r.fuelConsumption! * r.distance!) / 100.0);
-      final avgCons =
-          validDistance > 0 ? validFuel / validDistance * 100.0 : 0.0;
+        0.0,
+        (sum, r) => sum + (r.fuelConsumption! * r.distance!) / 100.0,
+      );
+      final avgCons = validDistance > 0
+          ? validFuel / validDistance * 100.0
+          : 0.0;
       final costPerKm = dist > 0 ? (totalCost / dist) : 0.0;
 
       result.add(
@@ -511,8 +535,10 @@ class StatisticsService {
           (categorySums[exp.category] ?? 0.0) + exp.amount;
     }
 
-    final double totalAll =
-        categorySums.values.fold(0.0, (sum, val) => sum + val);
+    final double totalAll = categorySums.values.fold(
+      0.0,
+      (sum, val) => sum + val,
+    );
     if (totalAll <= 0) return [];
 
     final List<ExpenseCategoryShare> results = [];
@@ -585,11 +611,11 @@ class StatisticsService {
 
   /// 11. 生成每公里花费历史走势折线图 (¥/km)
   static List<ChartDataPoint> getCostPerKmTrend(
-      List<RefuelRecordModel> records) {
-    final validRecords = records
-        .where((r) => r.costPerKm != null && r.costPerKm! > 0)
-        .toList()
-      ..sort((a, b) => a.refuelDate.compareTo(b.refuelDate));
+    List<RefuelRecordModel> records,
+  ) {
+    final validRecords =
+        records.where((r) => r.costPerKm != null && r.costPerKm! > 0).toList()
+          ..sort((a, b) => a.refuelDate.compareTo(b.refuelDate));
 
     return validRecords.map((r) {
       return ChartDataPoint(
@@ -604,15 +630,19 @@ class StatisticsService {
 
   /// 12. 异常点智能诊断（仅基于有效实测油耗记录）
   static List<AnomalyDiagnosticItem> getAnomalyDiagnostics(
-      List<RefuelRecordModel> records) {
-    final validRecords = records
-        .where((r) =>
-            r.fuelConsumption != null &&
-            r.fuelConsumption! > 0 &&
-            r.distance != null &&
-            r.distance! > 0)
-        .toList()
-      ..sort((a, b) => b.refuelDate.compareTo(a.refuelDate));
+    List<RefuelRecordModel> records,
+  ) {
+    final validRecords =
+        records
+            .where(
+              (r) =>
+                  r.fuelConsumption != null &&
+                  r.fuelConsumption! > 0 &&
+                  r.distance != null &&
+                  r.distance! > 0,
+            )
+            .toList()
+          ..sort((a, b) => b.refuelDate.compareTo(a.refuelDate));
 
     if (validRecords.length < 5) return [];
 
@@ -620,8 +650,11 @@ class StatisticsService {
     final mean = consumptions.reduce((a, b) => a + b) / consumptions.length;
 
     // 计算标准差与离群阈值 (约 1.1 倍标准差敏感度)
-    final variance = consumptions.fold(
-            0.0, (sum, val) => sum + (val - mean) * (val - mean)) /
+    final variance =
+        consumptions.fold(
+          0.0,
+          (sum, val) => sum + (val - mean) * (val - mean),
+        ) /
         consumptions.length;
     final stdDev = variance > 0 ? math.sqrt(variance) : 0.8;
     final highThreshold = mean + (stdDev * 1.15).clamp(0.7, 2.5);
@@ -694,7 +727,11 @@ class StatisticsService {
     for (final r in records) {
       if (r.refuelDate.year == targetYear) {
         final key = DateFormatter.formatYmd(r.refuelDate);
-        dayDistMap[key] = (dayDistMap[key] ?? 0.0) + (r.distance ?? 0.0);
+        dayDistMap[key] =
+            (dayDistMap[key] ?? 0.0) +
+            (FuelCalculator.isCompletedCycleRecord(r)
+                ? (r.distance ?? 0.0)
+                : 0.0);
         dayFuelMap[key] = (dayFuelMap[key] ?? 0.0) + r.fuelAmount;
         dayExpMap[key] = (dayExpMap[key] ?? 0.0) + r.totalPrice;
       }
@@ -759,8 +796,9 @@ class StatisticsService {
       );
     }
 
-    final double activeRate =
-        totalDays > 0 ? (activeDays / totalDays) * 100.0 : 0.0;
+    final double activeRate = totalDays > 0
+        ? (activeDays / totalDays) * 100.0
+        : 0.0;
 
     return YearlyHeatmapSummary(
       year: targetYear,

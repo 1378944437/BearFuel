@@ -6,12 +6,7 @@ class FuelType {
   static const String diesel = '0# 柴油';
 
   /// 全部支持的燃油类型列表
-  static const List<String> allTypes = [
-    gas92,
-    gas95,
-    gas98,
-    diesel,
-  ];
+  static const List<String> allTypes = [gas92, gas95, gas98, diesel];
 }
 
 /// 车辆其他费用类型分类

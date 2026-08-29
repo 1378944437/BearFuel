@@ -29,6 +29,8 @@ class _RecordListScreenState extends State<RecordListScreen>
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final _RefuelSwipeController _refuelSwipeController =
+      _RefuelSwipeController();
   String _searchQuery = '';
   bool _hasSeenSwipeHint = true; // 默认为 true，待异步加载
   bool _showBackToTop = false;
@@ -106,8 +108,10 @@ class _RecordListScreenState extends State<RecordListScreen>
             children: [
               Icon(AppIcons.search, color: Color(0xFFFF5A24), size: 22),
               SizedBox(width: 8),
-              Text('搜索账本流水',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              Text(
+                '搜索账本流水',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
             ],
           ),
           content: TextField(
@@ -144,8 +148,9 @@ class _RecordListScreenState extends State<RecordListScreen>
             ElevatedButton(
               onPressed: () => Navigator.pop(ctx),
               style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFFF5A24),
-                  foregroundColor: Colors.white),
+                backgroundColor: const Color(0xFFFF5A24),
+                foregroundColor: Colors.white,
+              ),
               child: const Text('完成'),
             ),
           ],
@@ -175,13 +180,16 @@ class _RecordListScreenState extends State<RecordListScreen>
 
             return Material(
               color: bgColor,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(20)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(20),
+              ),
               clipBehavior: Clip.antiAlias,
               child: SafeArea(
                 child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 16,
+                  ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -191,13 +199,19 @@ class _RecordListScreenState extends State<RecordListScreen>
                         children: [
                           const Row(
                             children: [
-                              Icon(AppIcons.tune,
-                                  color: Color(0xFFFF5A24), size: 20),
+                              Icon(
+                                AppIcons.tune,
+                                color: Color(0xFFFF5A24),
+                                size: 20,
+                              ),
                               SizedBox(width: 8),
-                              Text('综合筛选',
-                                  style: TextStyle(
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.bold)),
+                              Text(
+                                '综合筛选',
+                                style: TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ],
                           ),
                           IconButton(
@@ -209,23 +223,30 @@ class _RecordListScreenState extends State<RecordListScreen>
                       const SizedBox(height: 12),
 
                       // 1. 燃油标号
-                      const Text('燃油标号 / 油品',
-                          style: TextStyle(
-                              fontSize: 13, fontWeight: FontWeight.bold)),
+                      const Text(
+                        '燃油标号 / 油品',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                       const SizedBox(height: 6),
                       Wrap(
                         spacing: 8,
                         children: ['全部', '92#', '95#', '98#', '柴油'].map((f) {
                           final isSel = tempFuel == f;
                           return ChoiceChip(
-                            label:
-                                Text(f, style: const TextStyle(fontSize: 12)),
+                            label: Text(
+                              f,
+                              style: const TextStyle(fontSize: 12),
+                            ),
                             selected: isSel,
                             selectedColor: const Color(0xFFFF5A24),
                             labelStyle: TextStyle(
-                                color: isSel
-                                    ? colors.onPrimary
-                                    : colors.onSurface),
+                              color: isSel
+                                  ? colors.onPrimary
+                                  : colors.onSurface,
+                            ),
                             onSelected: (_) =>
                                 setModalState(() => tempFuel = f),
                           );
@@ -234,23 +255,30 @@ class _RecordListScreenState extends State<RecordListScreen>
                       const SizedBox(height: 12),
 
                       // 2. 是否加满
-                      const Text('油箱状态',
-                          style: TextStyle(
-                              fontSize: 13, fontWeight: FontWeight.bold)),
+                      const Text(
+                        '油箱状态',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                       const SizedBox(height: 6),
                       Wrap(
                         spacing: 8,
                         children: ['全部', '仅加满', '未加满'].map((t) {
                           final isSel = tempTank == t;
                           return ChoiceChip(
-                            label:
-                                Text(t, style: const TextStyle(fontSize: 12)),
+                            label: Text(
+                              t,
+                              style: const TextStyle(fontSize: 12),
+                            ),
                             selected: isSel,
                             selectedColor: const Color(0xFFFF5A24),
                             labelStyle: TextStyle(
-                                color: isSel
-                                    ? colors.onPrimary
-                                    : colors.onSurface),
+                              color: isSel
+                                  ? colors.onPrimary
+                                  : colors.onSurface,
+                            ),
                             onSelected: (_) =>
                                 setModalState(() => tempTank = t),
                           );
@@ -259,23 +287,30 @@ class _RecordListScreenState extends State<RecordListScreen>
                       const SizedBox(height: 12),
 
                       // 3. 油耗表现
-                      const Text('油耗表现',
-                          style: TextStyle(
-                              fontSize: 13, fontWeight: FontWeight.bold)),
+                      const Text(
+                        '油耗表现',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                       const SizedBox(height: 6),
                       Wrap(
                         spacing: 8,
                         children: ['全部', '经济省油', '油耗偏高'].map((e) {
                           final isSel = tempEff == e;
                           return ChoiceChip(
-                            label:
-                                Text(e, style: const TextStyle(fontSize: 12)),
+                            label: Text(
+                              e,
+                              style: const TextStyle(fontSize: 12),
+                            ),
                             selected: isSel,
                             selectedColor: const Color(0xFFFF5A24),
                             labelStyle: TextStyle(
-                                color: isSel
-                                    ? colors.onPrimary
-                                    : colors.onSurface),
+                              color: isSel
+                                  ? colors.onPrimary
+                                  : colors.onSurface,
+                            ),
                             onSelected: (_) => setModalState(() => tempEff = e),
                           );
                         }).toList(),
@@ -283,18 +318,24 @@ class _RecordListScreenState extends State<RecordListScreen>
                       const SizedBox(height: 12),
 
                       // 4. 备注/优惠
-                      const Text('备注与其他',
-                          style: TextStyle(
-                              fontSize: 13, fontWeight: FontWeight.bold)),
+                      const Text(
+                        '备注与其他',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                       const SizedBox(height: 6),
                       FilterChip(
-                        label: const Text('仅看有备注/优惠信息',
-                            style: TextStyle(fontSize: 12)),
+                        label: const Text(
+                          '仅看有备注/优惠信息',
+                          style: TextStyle(fontSize: 12),
+                        ),
                         selected: tempNote,
                         selectedColor: const Color(0xFFFF5A24),
                         labelStyle: TextStyle(
-                            color:
-                                tempNote ? colors.onPrimary : colors.onSurface),
+                          color: tempNote ? colors.onPrimary : colors.onSurface,
+                        ),
                         checkmarkColor: colors.onPrimary,
                         onSelected: (val) =>
                             setModalState(() => tempNote = val),
@@ -316,7 +357,8 @@ class _RecordListScreenState extends State<RecordListScreen>
                                 });
                               },
                               style: OutlinedButton.styleFrom(
-                                  minimumSize: const Size(0, 44)),
+                                minimumSize: const Size(0, 44),
+                              ),
                               child: const Text('重置'),
                             ),
                           ),
@@ -391,12 +433,19 @@ class _RecordListScreenState extends State<RecordListScreen>
                     children: [
                       const Row(
                         children: [
-                          Icon(AppIcons.calendar_month,
-                              color: Color(0xFF1E88E5), size: 20),
+                          Icon(
+                            AppIcons.calendar_month,
+                            color: Color(0xFF1E88E5),
+                            size: 20,
+                          ),
                           SizedBox(width: 8),
-                          Text('选择时间范围',
-                              style: TextStyle(
-                                  fontSize: 17, fontWeight: FontWeight.bold)),
+                          Text(
+                            '选择时间范围',
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ],
                       ),
                       IconButton(
@@ -414,12 +463,13 @@ class _RecordListScreenState extends State<RecordListScreen>
                     children: quickTimeList.map((t) {
                       final isSel = _selectedTimeRange == t;
                       return ChoiceChip(
-                        label: Text(t,
-                            style: TextStyle(
-                                fontSize: 12,
-                                color: isSel
-                                    ? colors.onPrimary
-                                    : colors.onSurface)),
+                        label: Text(
+                          t,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isSel ? colors.onPrimary : colors.onSurface,
+                          ),
+                        ),
                         selected: isSel,
                         selectedColor: const Color(0xFF1E88E5),
                         onSelected: (_) {
@@ -452,7 +502,9 @@ class _RecordListScreenState extends State<RecordListScreen>
                     },
                     child: Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 10),
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
                       decoration: BoxDecoration(
                         color: _selectedTimeRange == '自定义'
                             ? const Color(0xFF1E88E5).withValues(alpha: 0.12)
@@ -469,36 +521,47 @@ class _RecordListScreenState extends State<RecordListScreen>
                           Container(
                             padding: const EdgeInsets.all(6),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF1E88E5)
-                                  .withValues(alpha: 0.15),
+                              color: const Color(
+                                0xFF1E88E5,
+                              ).withValues(alpha: 0.15),
                               shape: BoxShape.circle,
                             ),
-                            child: const Icon(AppIcons.edit_calendar_outlined,
-                                size: 18, color: Color(0xFF1E88E5)),
+                            child: const Icon(
+                              AppIcons.edit_calendar_outlined,
+                              size: 18,
+                              color: Color(0xFF1E88E5),
+                            ),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text('自定义日期范围',
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 13)),
+                                const Text(
+                                  '自定义日期范围',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                  ),
+                                ),
                                 const SizedBox(height: 2),
                                 Text(
                                   _customDateRange != null
                                       ? '${DateFormatter.formatChineseYmd(_customDateRange!.start)} 至 ${DateFormatter.formatChineseYmd(_customDateRange!.end)}'
                                       : '点此选取任意起始和截止日期',
                                   style: TextStyle(
-                                      fontSize: 11,
-                                      color: colors.onSurfaceVariant),
+                                    fontSize: 11,
+                                    color: colors.onSurfaceVariant,
+                                  ),
                                 ),
                               ],
                             ),
                           ),
-                          Icon(AppIcons.chevron_right,
-                              size: 18, color: colors.onSurfaceVariant),
+                          Icon(
+                            AppIcons.chevron_right,
+                            size: 18,
+                            color: colors.onSurfaceVariant,
+                          ),
                         ],
                       ),
                     ),
@@ -516,7 +579,8 @@ class _RecordListScreenState extends State<RecordListScreen>
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final hasActiveFilters = _selectedFuelType != '全部' ||
+    final hasActiveFilters =
+        _selectedFuelType != '全部' ||
         _selectedTankStatus != '全部' ||
         _selectedEfficiency != '全部' ||
         _onlyWithNotes;
@@ -529,10 +593,7 @@ class _RecordListScreenState extends State<RecordListScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: const AppPageTitle(
-          title: '明细账本',
-          subtitle: '加油、费用与筛选记录',
-        ),
+        title: const AppPageTitle(title: '明细账本', subtitle: '加油、费用与筛选记录'),
         actions: [
           IconButton(
             icon: const Icon(AppIcons.settings_outlined),
@@ -542,7 +603,8 @@ class _RecordListScreenState extends State<RecordListScreen>
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                    builder: (_) => const ServiceSettingsScreen()),
+                  builder: (_) => const ServiceSettingsScreen(),
+                ),
               );
             },
           ),
@@ -592,6 +654,8 @@ class _RecordListScreenState extends State<RecordListScreen>
                   });
                 },
                 scrollController: _scrollController,
+                swipeController: _refuelSwipeController,
+                customDateRange: _customDateRange,
               ),
               const _ExpenseRecordListView(),
             ],
@@ -624,8 +688,11 @@ class _RecordListScreenState extends State<RecordListScreen>
                             width: 44,
                             height: 44,
                             alignment: Alignment.center,
-                            child: const Icon(AppIcons.arrow_upward,
-                                size: 20, color: Color(0xFFFF5A24)),
+                            child: const Icon(
+                              AppIcons.arrow_upward,
+                              size: 20,
+                              color: Color(0xFFFF5A24),
+                            ),
                           ),
                         ),
                       ),
@@ -701,6 +768,8 @@ class _RefuelRecordListView extends StatelessWidget {
   final VoidCallback onOpenTimeModal;
   final VoidCallback onResetAllFilters;
   final ScrollController scrollController;
+  final _RefuelSwipeController swipeController;
+  final DateTimeRange? customDateRange;
 
   const _RefuelRecordListView({
     required this.searchQuery,
@@ -718,6 +787,8 @@ class _RefuelRecordListView extends StatelessWidget {
     required this.onOpenTimeModal,
     required this.onResetAllFilters,
     required this.scrollController,
+    required this.swipeController,
+    required this.customDateRange,
   });
 
   @override
@@ -735,8 +806,9 @@ class _RefuelRecordListView extends StatelessWidget {
       final vehicle = context.read<VehicleProvider>().currentVehicle;
       return _DataLoadErrorView(
         message: refuelProv.errorMessage!,
-        onRetry:
-            vehicle == null ? null : () => refuelProv.loadRecords(vehicle.id),
+        onRetry: vehicle == null
+            ? null
+            : () => refuelProv.loadRecords(vehicle.id),
       );
     }
 
@@ -759,18 +831,40 @@ class _RefuelRecordListView extends StatelessWidget {
 
     // 1. 根据时间范围过滤
     final timeFiltered = allRecords.where((r) {
+      // 自定义范围按日界比较（与统计页口径一致），且不隐藏未来的补录记录
+      if (isCustomTime && customDateRange != null) {
+        final start = DateTime(
+          customDateRange!.start.year,
+          customDateRange!.start.month,
+          customDateRange!.start.day,
+        );
+        final end = DateTime(
+          customDateRange!.end.year,
+          customDateRange!.end.month,
+          customDateRange!.end.day,
+          23,
+          59,
+          59,
+        );
+        return !r.refuelDate.isBefore(start) && !r.refuelDate.isAfter(end);
+      }
       final age = now.difference(r.refuelDate);
-      if (age.isNegative) return false;
+      // 仅相对时间范围（近1天/近1周...）排除未来记录，"全部时间"应显示补录
       Duration? maxAge;
       if (timeRange == '近1天') {
+        if (age.isNegative) return false;
         maxAge = const Duration(days: 1);
       } else if (timeRange == '近1周') {
+        if (age.isNegative) return false;
         maxAge = const Duration(days: 7);
       } else if (timeRange == '近1月 (近30天)') {
+        if (age.isNegative) return false;
         maxAge = const Duration(days: 30);
       } else if (timeRange == '近半年') {
+        if (age.isNegative) return false;
         maxAge = const Duration(days: 183);
       } else if (timeRange == '近1年') {
+        if (age.isNegative) return false;
         maxAge = const Duration(days: 365);
       } else if (timeRange == '今年') {
         return r.refuelDate.year == now.year;
@@ -859,8 +953,10 @@ class _RefuelRecordListView extends StatelessWidget {
                 Expanded(
                   child: Text(
                     '向左滑动卡片可进行编辑或删除',
-                    style:
-                        TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: colors.onSurfaceVariant,
+                    ),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -869,8 +965,11 @@ class _RefuelRecordListView extends StatelessWidget {
                   borderRadius: BorderRadius.circular(10),
                   child: Padding(
                     padding: const EdgeInsets.all(2.0),
-                    child: Icon(AppIcons.close,
-                        size: 14, color: colors.onSurfaceVariant),
+                    child: Icon(
+                      AppIcons.close,
+                      size: 14,
+                      color: colors.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ],
@@ -883,125 +982,157 @@ class _RefuelRecordListView extends StatelessWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(AppIcons.search_off,
-                          size: 48, color: colors.onSurfaceVariant),
+                      Icon(
+                        AppIcons.search_off,
+                        size: 48,
+                        color: colors.onSurfaceVariant,
+                      ),
                       const SizedBox(height: 8),
-                      Text('在当前筛选条件下未找到匹配记录',
-                          style: TextStyle(color: colors.onSurfaceVariant)),
+                      Text(
+                        '在当前筛选条件下未找到匹配记录',
+                        style: TextStyle(color: colors.onSurfaceVariant),
+                      ),
                     ],
                   ),
                 )
-              : ListView.builder(
-                  controller: scrollController,
-                  scrollCacheExtent: const ScrollCacheExtent.pixels(600),
-                  padding: const EdgeInsets.only(top: 6, bottom: 24),
-                  itemCount: monthlyGroups.keys.length,
-                  itemBuilder: (context, groupIndex) {
-                    final monthKey = monthlyGroups.keys.elementAt(groupIndex);
-                    final groupRecords = monthlyGroups[monthKey]!;
+              : NotificationListener<ScrollStartNotification>(
+                  onNotification: (notification) {
+                    // 用户开始拖动滚动时收起已滑开的卡片
+                    if (notification.dragDetails != null) {
+                      swipeController.close();
+                    }
+                    return false;
+                  },
+                  child: ListView.builder(
+                    controller: scrollController,
+                    scrollCacheExtent: const ScrollCacheExtent.pixels(600),
+                    padding: const EdgeInsets.only(top: 6, bottom: 24),
+                    itemCount: monthlyGroups.keys.length,
+                    itemBuilder: (context, groupIndex) {
+                      final monthKey = monthlyGroups.keys.elementAt(groupIndex);
+                      final groupRecords = monthlyGroups[monthKey]!;
 
-                    final totalFuel =
-                        groupRecords.fold(0.0, (sum, r) => sum + r.fuelAmount);
-                    final totalCost =
-                        groupRecords.fold(0.0, (sum, r) => sum + r.totalPrice);
-                    final validConsumptions = groupRecords
-                        .where((r) =>
-                            r.fuelConsumption != null && r.fuelConsumption! > 0)
-                        .map((r) => r.fuelConsumption!)
-                        .toList();
-                    final monthAvg = validConsumptions.isNotEmpty
-                        ? (validConsumptions.reduce((a, b) => a + b) /
-                            validConsumptions.length)
-                        : 0.0;
+                      final totalFuel = groupRecords.fold(
+                        0.0,
+                        (sum, r) => sum + r.fuelAmount,
+                      );
+                      final totalCost = groupRecords.fold(
+                        0.0,
+                        (sum, r) => sum + r.totalPrice,
+                      );
+                      final validConsumptions = groupRecords
+                          .where(
+                            (r) =>
+                                r.fuelConsumption != null &&
+                                r.fuelConsumption! > 0,
+                          )
+                          .map((r) => r.fuelConsumption!)
+                          .toList();
+                      final monthAvg = validConsumptions.isNotEmpty
+                          ? (validConsumptions.reduce((a, b) => a + b) /
+                                validConsumptions.length)
+                          : 0.0;
 
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildMonthSummaryCard(
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildMonthSummaryCard(
                             context,
                             monthKey,
                             groupRecords.length,
                             totalFuel,
                             totalCost,
-                            monthAvg),
-                        ...groupRecords.map((r) {
-                          return RepaintBoundary(
-                            key: ValueKey(r.id),
-                            child: _SlidableRefuelItemCard(
-                              record: r,
-                              globalAvgConsumption: avgConsumption,
-                              onOperated: onDismissSwipeHint,
-                              onEdit: () {
-                                onDismissSwipeHint();
-                                HapticFeedback.lightImpact();
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        AddRefuelScreen(editRecord: r),
-                                  ),
-                                );
-                              },
-                              onDelete: () async {
-                                HapticFeedback.lightImpact();
-                                final confirm = await showDialog<bool>(
-                                  context: context,
-                                  builder: (ctx) => AlertDialog(
-                                    title: const Text('删除记录'),
-                                    content: const Text('确定要删除这笔加油记录吗？'),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () =>
-                                            Navigator.pop(ctx, false),
-                                        child: const Text('取消'),
-                                      ),
-                                      ElevatedButton(
-                                        style: ElevatedButton.styleFrom(
-                                            backgroundColor: Colors.red),
-                                        onPressed: () =>
-                                            Navigator.pop(ctx, true),
-                                        child: const Text('删除'),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                                if (confirm == true && context.mounted) {
-                                  final deleted = r;
-                                  final success =
-                                      await refuelProv.deleteRecord(r.id);
-                                  if (!success) {
-                                    if (!context.mounted) return;
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('删除失败，请重试')),
-                                    );
-                                    return;
-                                  }
-
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: const Text('已删除 1 笔加油记录'),
-                                        duration: const Duration(seconds: 5),
-                                        behavior: SnackBarBehavior.floating,
-                                        action: SnackBarAction(
-                                          label: '撤销恢复',
-                                          textColor: Colors.amberAccent,
-                                          onPressed: () async {
-                                            HapticFeedback.lightImpact();
-                                            await refuelProv.addRecord(deleted);
-                                          },
+                            monthAvg,
+                          ),
+                          ...groupRecords.map((r) {
+                            return RepaintBoundary(
+                              key: ValueKey(r.id),
+                              child: _SlidableRefuelItemCard(
+                                record: r,
+                                globalAvgConsumption: avgConsumption,
+                                swipeController: swipeController,
+                                onOperated: onDismissSwipeHint,
+                                onEdit: () {
+                                  onDismissSwipeHint();
+                                  HapticFeedback.lightImpact();
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          AddRefuelScreen(editRecord: r),
+                                    ),
+                                  );
+                                },
+                                onDelete: () async {
+                                  HapticFeedback.lightImpact();
+                                  final confirm = await showDialog<bool>(
+                                    context: context,
+                                    builder: (ctx) => AlertDialog(
+                                      title: const Text('删除记录'),
+                                      content: const Text('确定要删除这笔加油记录吗？'),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.pop(ctx, false),
+                                          child: const Text('取消'),
                                         ),
-                                      ),
-                                    );
+                                        ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.red,
+                                          ),
+                                          onPressed: () =>
+                                              Navigator.pop(ctx, true),
+                                          child: const Text('删除'),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                  if (confirm == true && context.mounted) {
+                                    final deleted = r;
+                                    final success = await refuelProv
+                                        .deleteRecord(r.id);
+                                    if (!success) {
+                                      if (!context.mounted) return;
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('删除失败，请重试'),
+                                        ),
+                                      );
+                                      return;
+                                    }
+
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: const Text('已删除 1 笔加油记录'),
+                                          duration: const Duration(seconds: 5),
+                                          behavior: SnackBarBehavior.floating,
+                                          action: SnackBarAction(
+                                            label: '撤销恢复',
+                                            textColor: Colors.amberAccent,
+                                            onPressed: () async {
+                                              HapticFeedback.lightImpact();
+                                              await refuelProv.addRecord(
+                                                deleted,
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      );
+                                    }
                                   }
-                                }
-                              },
-                            ),
-                          );
-                        }),
-                      ],
-                    );
-                  },
+                                },
+                              ),
+                            );
+                          }),
+                        ],
+                      );
+                    },
+                  ),
                 ),
         ),
       ],
@@ -1022,8 +1153,10 @@ class _RefuelRecordListView extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
               onTap: onOpenFilterModal,
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 9,
+                ),
                 decoration: BoxDecoration(
                   color: hasActiveFilters
                       ? const Color(0xFFFF5A24).withValues(alpha: 0.12)
@@ -1056,8 +1189,11 @@ class _RefuelRecordListView extends StatelessWidget {
                             : colors.onSurface,
                       ),
                     ),
-                    Icon(AppIcons.arrow_drop_down,
-                        size: 18, color: colors.onSurfaceVariant),
+                    Icon(
+                      AppIcons.arrow_drop_down,
+                      size: 18,
+                      color: colors.onSurfaceVariant,
+                    ),
                   ],
                 ),
               ),
@@ -1071,8 +1207,10 @@ class _RefuelRecordListView extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
               onTap: onOpenTimeModal,
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 9,
+                ),
                 decoration: BoxDecoration(
                   color: timeRange != '全部时间'
                       ? const Color(0xFF1E88E5).withValues(alpha: 0.12)
@@ -1110,8 +1248,11 @@ class _RefuelRecordListView extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    Icon(AppIcons.arrow_drop_down,
-                        size: 18, color: colors.onSurfaceVariant),
+                    Icon(
+                      AppIcons.arrow_drop_down,
+                      size: 18,
+                      color: colors.onSurfaceVariant,
+                    ),
                   ],
                 ),
               ),
@@ -1126,24 +1267,30 @@ class _RefuelRecordListView extends StatelessWidget {
                 onTap: onResetAllFilters,
                 borderRadius: BorderRadius.circular(10),
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 9,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.redAccent.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                        color: Colors.redAccent.withValues(alpha: 0.3)),
+                      color: Colors.redAccent.withValues(alpha: 0.3),
+                    ),
                   ),
                   child: const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(AppIcons.refresh, size: 14, color: Colors.redAccent),
                       SizedBox(width: 4),
-                      Text('重置',
-                          style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.redAccent)),
+                      Text(
+                        '重置',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.redAccent,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1154,8 +1301,14 @@ class _RefuelRecordListView extends StatelessWidget {
     );
   }
 
-  Widget _buildMonthSummaryCard(BuildContext context, String monthKey,
-      int count, double fuel, double cost, double avg) {
+  Widget _buildMonthSummaryCard(
+    BuildContext context,
+    String monthKey,
+    int count,
+    double fuel,
+    double cost,
+    double avg,
+  ) {
     final colors = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
@@ -1163,43 +1316,53 @@ class _RefuelRecordListView extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFFFF5A24).withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(8),
-        border:
-            Border.all(color: const Color(0xFFFF5A24).withValues(alpha: 0.2)),
+        border: Border.all(
+          color: const Color(0xFFFF5A24).withValues(alpha: 0.2),
+        ),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Row(
             children: [
-              const Icon(AppIcons.calendar_month,
-                  color: Color(0xFFFF5A24), size: 16),
+              const Icon(
+                AppIcons.calendar_month,
+                color: Color(0xFFFF5A24),
+                size: 16,
+              ),
               const SizedBox(width: 6),
               Text(
                 monthKey,
                 style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                    color: Color(0xFFFF5A24)),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  color: Color(0xFFFF5A24),
+                ),
               ),
               const SizedBox(width: 6),
-              Text('($count笔)',
-                  style:
-                      TextStyle(fontSize: 11, color: colors.onSurfaceVariant)),
+              Text(
+                '($count笔)',
+                style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
+              ),
             ],
           ),
           Row(
             children: [
               Text(
                 '${fuel.toStringAsFixed(1)}L | ¥${cost.toStringAsFixed(0)}',
-                style:
-                    const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               if (avg > 0) ...[
                 const SizedBox(width: 6),
                 Text(
                   '均 ${avg.toStringAsFixed(2)}',
-                  style:
-                      TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: colors.onSurfaceVariant,
+                  ),
                 ),
               ],
             ],
@@ -1211,9 +1374,36 @@ class _RefuelRecordListView extends StatelessWidget {
 }
 
 /// 高性能单向左滑卡片（纯净左滑调出编辑/删除，无右滑多选）
+/// 账本左滑卡片协调器：同一时间只允许一张卡片处于滑开状态，
+/// 并支持在滚动开始或点击其他区域时统一收起。
+class _RefuelSwipeController {
+  _SlidableRefuelItemCardState? _openCard;
+
+  /// 请求滑开 [card]，同时收起当前已滑开的其他卡片
+  void opened(_SlidableRefuelItemCardState card) {
+    if (_openCard == card) return;
+    _openCard?._collapse();
+    _openCard = card;
+  }
+
+  /// 通知 [card] 已收起，解除登记
+  void closed(_SlidableRefuelItemCardState card) {
+    if (_openCard == card) {
+      _openCard = null;
+    }
+  }
+
+  /// 收起当前滑开的卡片（如滚动开始时）
+  void close() {
+    _openCard?._collapse();
+    _openCard = null;
+  }
+}
+
 class _SlidableRefuelItemCard extends StatefulWidget {
   final RefuelRecordModel record;
   final double globalAvgConsumption;
+  final _RefuelSwipeController swipeController;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback? onOperated;
@@ -1221,6 +1411,7 @@ class _SlidableRefuelItemCard extends StatefulWidget {
   const _SlidableRefuelItemCard({
     required this.record,
     required this.globalAvgConsumption,
+    required this.swipeController,
     required this.onEdit,
     required this.onDelete,
     this.onOperated,
@@ -1238,11 +1429,15 @@ class _SlidableRefuelItemCardState extends State<_SlidableRefuelItemCard>
   double _dragOffset = 0.0;
   static const double _actionWidth = 140.0; // 编辑70 + 删除70
 
+  _RefuelSwipeController get swipeController => widget.swipeController;
+
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 200));
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
     _animation = Tween<double>(begin: 0.0, end: 0.0).animate(_controller);
     _controller.addListener(() {
       if (mounted) setState(() => _dragOffset = _animation.value);
@@ -1251,14 +1446,16 @@ class _SlidableRefuelItemCardState extends State<_SlidableRefuelItemCard>
 
   @override
   void dispose() {
+    swipeController.closed(this);
     _controller.dispose();
     super.dispose();
   }
 
   void _animateTo(double target) {
-    _animation = Tween<double>(begin: _dragOffset, end: target).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
-    );
+    _animation = Tween<double>(
+      begin: _dragOffset,
+      end: target,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
     _controller.forward(from: 0.0);
   }
 
@@ -1266,18 +1463,29 @@ class _SlidableRefuelItemCardState extends State<_SlidableRefuelItemCard>
     _animateTo(0.0);
   }
 
+  /// 收起卡片（供滑动协调器调用），仅当已滑开时才执行动画
+  void _collapse() {
+    if (!mounted) return;
+    if (_dragOffset != 0) {
+      _resetPosition();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final r = widget.record;
     final colors = Theme.of(context).colorScheme;
     final hasConsumption = r.fuelConsumption != null && r.fuelConsumption! > 0;
-    final isEconomy = hasConsumption &&
+    final isEconomy =
+        hasConsumption &&
         widget.globalAvgConsumption > 0 &&
         r.fuelConsumption! <= widget.globalAvgConsumption;
-    final isHigher = hasConsumption &&
+    final isHigher =
+        hasConsumption &&
         widget.globalAvgConsumption > 0 &&
         r.fuelConsumption! > widget.globalAvgConsumption * 1.1;
-    final isAnomaly = hasConsumption &&
+    final isAnomaly =
+        hasConsumption &&
         widget.globalAvgConsumption > 0 &&
         (r.fuelConsumption! > widget.globalAvgConsumption * 1.8 ||
             r.fuelConsumption! < widget.globalAvgConsumption * 0.4);
@@ -1307,6 +1515,7 @@ class _SlidableRefuelItemCardState extends State<_SlidableRefuelItemCard>
                 children: [
                   InkWell(
                     onTap: () {
+                      swipeController.closed(this);
                       _resetPosition();
                       widget.onEdit();
                     },
@@ -1317,20 +1526,27 @@ class _SlidableRefuelItemCardState extends State<_SlidableRefuelItemCard>
                       child: const Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(AppIcons.edit_outlined,
-                              color: Colors.white, size: 22),
+                          Icon(
+                            AppIcons.edit_outlined,
+                            color: Colors.white,
+                            size: 22,
+                          ),
                           SizedBox(height: 2),
-                          Text('编辑',
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold)),
+                          Text(
+                            '编辑',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ],
                       ),
                     ),
                   ),
                   InkWell(
                     onTap: () {
+                      swipeController.closed(this);
                       _resetPosition();
                       widget.onOperated?.call();
                       widget.onDelete();
@@ -1342,14 +1558,20 @@ class _SlidableRefuelItemCardState extends State<_SlidableRefuelItemCard>
                       child: const Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(AppIcons.delete_outline,
-                              color: Colors.white, size: 22),
+                          Icon(
+                            AppIcons.delete_outline,
+                            color: Colors.white,
+                            size: 22,
+                          ),
                           SizedBox(height: 2),
-                          Text('删除',
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold)),
+                          Text(
+                            '删除',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -1359,255 +1581,291 @@ class _SlidableRefuelItemCardState extends State<_SlidableRefuelItemCard>
             ),
           ),
 
-          // 2. 表层主卡片（仅允许向左拖拽）
-          IgnorePointer(
-            // 滑开后让右侧操作抽屉接收点击，避免主卡片拦截“编辑”。
-            ignoring: _dragOffset < -1,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onHorizontalDragUpdate: (details) {
-                setState(() {
-                  _dragOffset += details.primaryDelta!;
-                  // 仅允许左滑（负偏移），禁止右滑（最大为 0.0）
-                  _dragOffset = _dragOffset.clamp(-_actionWidth, 0.0);
-                });
-              },
-              onHorizontalDragEnd: (details) {
-                if (_dragOffset < -45) {
-                  // 左滑超过阈值：露出右侧编辑与删除抽屉
-                  HapticFeedback.lightImpact();
-                  widget.onOperated?.call();
-                  _animateTo(-_actionWidth);
-                } else {
-                  _resetPosition();
-                }
-              },
-              onTap: () {
-                if (_dragOffset != 0) {
-                  _resetPosition();
-                } else {
-                  _showRefuelDetailSheet(
-                      context, r, widget.globalAvgConsumption);
-                }
-              },
-              child: Transform.translate(
-                offset: Offset(_dragOffset, 0),
-                child: Card(
-                  margin: EdgeInsets.zero,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
+          // 2. 表层主卡片（仅允许向左拖拽；滑开后仍可点击/右滑收回）
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onHorizontalDragUpdate: (details) {
+              setState(() {
+                _dragOffset += details.primaryDelta!;
+                // 仅允许左滑（负偏移），禁止右滑（最大为 0.0）
+                _dragOffset = _dragOffset.clamp(-_actionWidth, 0.0);
+              });
+            },
+            onHorizontalDragEnd: (details) {
+              if (_dragOffset < -45) {
+                // 左滑超过阈值：露出右侧编辑与删除抽屉，并收起其他已滑开的卡片
+                HapticFeedback.lightImpact();
+                widget.onOperated?.call();
+                swipeController.opened(this);
+                _animateTo(-_actionWidth);
+              } else {
+                swipeController.closed(this);
+                _resetPosition();
+              }
+            },
+            onTap: () {
+              if (_dragOffset != 0) {
+                // 已滑开时点击卡片任意位置收回
+                swipeController.closed(this);
+                _resetPosition();
+              } else {
+                _showRefuelDetailSheet(context, r, widget.globalAvgConsumption);
+              }
+            },
+            child: Transform.translate(
+              offset: Offset(_dragOffset, 0),
+              child: Card(
+                margin: EdgeInsets.zero,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(
+                                AppIcons.local_gas_station,
+                                color: Color(0xFFFF5A24),
+                                size: 18,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                DateFormatter.formatYmdHm(r.refuelDate),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (hasConsumption)
                             Row(
                               children: [
-                                const Icon(AppIcons.local_gas_station,
-                                    color: Color(0xFFFF5A24), size: 18),
-                                const SizedBox(width: 6),
-                                Text(
-                                  DateFormatter.formatYmdHm(r.refuelDate),
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13),
-                                ),
-                              ],
-                            ),
-                            if (hasConsumption)
-                              Row(
-                                children: [
-                                  if (isAnomaly) ...[
-                                    const Tooltip(
-                                      message: '此笔油耗偏离平均值较多，可能存在漏记里程或升数偏差',
-                                      child: Icon(
-                                          AppIcons.warning_amber_rounded,
-                                          color: Colors.orange,
-                                          size: 16),
+                                if (isAnomaly) ...[
+                                  const Tooltip(
+                                    message: '此笔油耗偏离平均值较多，可能存在漏记里程或升数偏差',
+                                    child: Icon(
+                                      AppIcons.warning_amber_rounded,
+                                      color: Colors.orange,
+                                      size: 16,
                                     ),
-                                    const SizedBox(width: 4),
-                                  ],
-                                  if (isEconomy)
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 5, vertical: 1),
-                                      margin: const EdgeInsets.only(right: 4),
-                                      decoration: BoxDecoration(
-                                        color: Colors.green
-                                            .withValues(alpha: 0.12),
-                                        borderRadius: BorderRadius.circular(3),
-                                      ),
-                                      child: Text(
-                                          '节省 ${((widget.globalAvgConsumption - r.fuelConsumption!).abs()).toStringAsFixed(1)}L',
-                                          style: const TextStyle(
-                                              fontSize: 10,
-                                              color: Colors.green,
-                                              fontWeight: FontWeight.bold)),
-                                    )
-                                  else if (isHigher)
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 5, vertical: 1),
-                                      margin: const EdgeInsets.only(right: 4),
-                                      decoration: BoxDecoration(
-                                        color: Colors.orange
-                                            .withValues(alpha: 0.12),
-                                        borderRadius: BorderRadius.circular(3),
-                                      ),
-                                      child: Text(
-                                          '偏高 ${((r.fuelConsumption! - widget.globalAvgConsumption).abs()).toStringAsFixed(1)}L',
-                                          style: const TextStyle(
-                                              fontSize: 10,
-                                              color: Colors.orange,
-                                              fontWeight: FontWeight.bold)),
-                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                ],
+                                if (isEconomy)
                                   Container(
                                     padding: const EdgeInsets.symmetric(
-                                        horizontal: 6, vertical: 2),
+                                      horizontal: 5,
+                                      vertical: 1,
+                                    ),
+                                    margin: const EdgeInsets.only(right: 4),
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFFFF5A24)
-                                          .withValues(alpha: 0.12),
-                                      borderRadius: BorderRadius.circular(4),
+                                      color: Colors.green.withValues(
+                                        alpha: 0.12,
+                                      ),
+                                      borderRadius: BorderRadius.circular(3),
                                     ),
                                     child: Text(
-                                      '${r.fuelConsumption!.toStringAsFixed(2)} L/100km',
+                                      '节省 ${((widget.globalAvgConsumption - r.fuelConsumption!).abs()).toStringAsFixed(1)}L',
                                       style: const TextStyle(
-                                        color: Color(0xFFFF5A24),
+                                        fontSize: 10,
+                                        color: Colors.green,
                                         fontWeight: FontWeight.bold,
-                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  )
+                                else if (isHigher)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 5,
+                                      vertical: 1,
+                                    ),
+                                    margin: const EdgeInsets.only(right: 4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.orange.withValues(
+                                        alpha: 0.12,
+                                      ),
+                                      borderRadius: BorderRadius.circular(3),
+                                    ),
+                                    child: Text(
+                                      '偏高 ${((r.fuelConsumption! - widget.globalAvgConsumption).abs()).toStringAsFixed(1)}L',
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        color: Colors.orange,
+                                        fontWeight: FontWeight.bold,
                                       ),
                                     ),
                                   ),
-                                ],
-                              )
-                            else if (!r.isFullTank)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  '未加满 (累计平摊)',
-                                  style: TextStyle(
-                                      color: colors.onSurfaceVariant,
-                                      fontSize: 11),
-                                ),
-                              )
-                            else if (r.isForgotPrevious)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: Colors.blue.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: const Text(
-                                  '漏记前次 (新基准)',
-                                  style: TextStyle(
-                                      color: Colors.blue, fontSize: 11),
-                                ),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    '¥${r.totalPrice.toStringAsFixed(2)}',
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(
+                                      0xFFFF5A24,
+                                    ).withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    '${r.fuelConsumption!.toStringAsFixed(2)} L/100km',
                                     style: const TextStyle(
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.bold,
                                       color: Color(0xFFFF5A24),
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
                                     ),
                                   ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    '${r.fuelAmount.toStringAsFixed(2)}升 @ ¥${r.unitPrice.toStringAsFixed(2)}/升 (${r.fuelType})',
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        color: colors.onSurfaceVariant),
-                                  ),
-                                ],
+                                ),
+                              ],
+                            )
+                          else if (!r.isFullTank)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                '未加满 (累计平摊)',
+                                style: TextStyle(
+                                  color: colors.onSurfaceVariant,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            )
+                          else if (r.isForgotPrevious)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.blue.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                '漏记前次 (新基准)',
+                                style: TextStyle(
+                                  color: Colors.blue,
+                                  fontSize: 11,
+                                ),
                               ),
                             ),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  '${r.mileage.toStringAsFixed(2)} km',
+                                  '¥${r.totalPrice.toStringAsFixed(2)}',
                                   style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.bold),
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFFFF5A24),
+                                  ),
                                 ),
-                                if (r.distance != null)
-                                  Text(
-                                    '行驶 +${r.distance!.toStringAsFixed(2)} km',
-                                    style: const TextStyle(
-                                        fontSize: 11,
-                                        color: Colors.green,
-                                        fontWeight: FontWeight.w600),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${r.fuelAmount.toStringAsFixed(2)}升 @ ¥${r.unitPrice.toStringAsFixed(2)}/升 (${r.fuelType})',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: colors.onSurfaceVariant,
                                   ),
-                                if (r.costPerKm != null)
-                                  Text(
-                                    '¥${r.costPerKm!.toStringAsFixed(2)}/km',
-                                    style: TextStyle(
-                                        fontSize: 11,
-                                        color: colors.onSurfaceVariant),
-                                  ),
+                                ),
                               ],
+                            ),
+                          ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                '${r.mileage.toStringAsFixed(2)} km',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              if (r.distance != null)
+                                Text(
+                                  '行驶 +${r.distance!.toStringAsFixed(2)} km',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.green,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              if (r.costPerKm != null)
+                                Text(
+                                  '¥${r.costPerKm!.toStringAsFixed(2)}/km',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: colors.onSurfaceVariant,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      if (r.gasStation != null && r.gasStation!.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Icon(
+                              AppIcons.location_on_outlined,
+                              size: 14,
+                              color: colors.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                r.gasStation!,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: colors.onSurface,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                           ],
                         ),
-                        if (r.gasStation != null &&
-                            r.gasStation!.isNotEmpty) ...[
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              Icon(AppIcons.location_on_outlined,
-                                  size: 14, color: colors.onSurfaceVariant),
-                              const SizedBox(width: 4),
-                              Expanded(
-                                child: Text(
-                                  r.gasStation!,
-                                  style: TextStyle(
-                                      fontSize: 12, color: colors.onSurface),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                        if (r.note != null && r.note!.isNotEmpty) ...[
-                          const SizedBox(height: 2),
-                          Row(
-                            children: [
-                              Icon(AppIcons.edit_note,
-                                  size: 14, color: colors.onSurfaceVariant),
-                              const SizedBox(width: 4),
-                              Expanded(
-                                child: Text(
-                                  r.note!,
-                                  style: TextStyle(
-                                      fontSize: 11,
-                                      color: colors.onSurfaceVariant),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
                       ],
-                    ),
+                      if (r.note != null && r.note!.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Icon(
+                              AppIcons.edit_note,
+                              size: 14,
+                              color: colors.onSurfaceVariant,
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                r.note!,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: colors.onSurfaceVariant,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ),
@@ -1619,7 +1877,10 @@ class _SlidableRefuelItemCardState extends State<_SlidableRefuelItemCard>
   }
 
   void _showRefuelDetailSheet(
-      BuildContext context, RefuelRecordModel r, double globalAvg) {
+    BuildContext context,
+    RefuelRecordModel r,
+    double globalAvg,
+  ) {
     HapticFeedback.selectionClick();
     final colors = Theme.of(context).colorScheme;
     final hasConsumption = r.fuelConsumption != null && r.fuelConsumption! > 0;
@@ -1657,18 +1918,27 @@ class _SlidableRefuelItemCardState extends State<_SlidableRefuelItemCard>
                 children: [
                   const Row(
                     children: [
-                      Icon(AppIcons.receipt_long_outlined,
-                          color: Color(0xFFFF5A24), size: 22),
+                      Icon(
+                        AppIcons.receipt_long_outlined,
+                        color: Color(0xFFFF5A24),
+                        size: 22,
+                      ),
                       SizedBox(width: 8),
-                      Text('加油明细参数',
-                          style: TextStyle(
-                              fontSize: 17, fontWeight: FontWeight.bold)),
+                      Text(
+                        '加油明细参数',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ],
                   ),
                   Text(
                     DateFormatter.formatYmdHm(r.refuelDate),
-                    style:
-                        TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: colors.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
@@ -1697,9 +1967,10 @@ class _SlidableRefuelItemCardState extends State<_SlidableRefuelItemCard>
                   ),
                   Expanded(
                     child: _buildDetailCell(
-                        '实付总额',
-                        '¥ ${r.totalPrice.toStringAsFixed(2)}',
-                        colors.onSurface),
+                      '实付总额',
+                      '¥ ${r.totalPrice.toStringAsFixed(2)}',
+                      colors.onSurface,
+                    ),
                   ),
                 ],
               ),
@@ -1711,24 +1982,32 @@ class _SlidableRefuelItemCardState extends State<_SlidableRefuelItemCard>
                 decoration: BoxDecoration(
                   color: Colors.grey.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(10),
-                  border:
-                      Border.all(color: Colors.grey.withValues(alpha: 0.12)),
+                  border: Border.all(
+                    color: Colors.grey.withValues(alpha: 0.12),
+                  ),
                 ),
                 child: Column(
                   children: [
                     _buildDetailRow('加油站', r.gasStation ?? '未填写'),
                     _buildDetailRow('燃油标号', r.fuelType),
-                    _buildDetailRow('单价 / 升数',
-                        '¥${r.unitPrice.toStringAsFixed(2)}/L · ${r.fuelAmount.toStringAsFixed(2)}L'),
                     _buildDetailRow(
-                        '表显总里程', '${r.mileage.toStringAsFixed(2)} km'),
+                      '单价 / 升数',
+                      '¥${r.unitPrice.toStringAsFixed(2)}/L · ${r.fuelAmount.toStringAsFixed(2)}L',
+                    ),
                     _buildDetailRow(
-                        '本箱行驶里程',
-                        distance > 0
-                            ? '${distance.toStringAsFixed(2)} km'
-                            : '新基准'),
+                      '表显总里程',
+                      '${r.mileage.toStringAsFixed(2)} km',
+                    ),
                     _buildDetailRow(
-                        '加满状态', r.isFullTank ? '已加满跳枪' : '未加满 (油量累计至下次)'),
+                      '本箱行驶里程',
+                      distance > 0
+                          ? '${distance.toStringAsFixed(2)} km'
+                          : '新基准',
+                    ),
+                    _buildDetailRow(
+                      '加满状态',
+                      r.isFullTank ? '已加满跳枪' : '未加满 (油量累计至下次)',
+                    ),
                     if (r.note != null && r.note!.isNotEmpty)
                       _buildDetailRow('备注说明', r.note!),
                   ],
@@ -1744,16 +2023,20 @@ class _SlidableRefuelItemCardState extends State<_SlidableRefuelItemCard>
                   ),
                   child: Row(
                     children: [
-                      const Icon(AppIcons.functions,
-                          size: 16, color: Color(0xFFFF5A24)),
+                      const Icon(
+                        AppIcons.functions,
+                        size: 16,
+                        color: Color(0xFFFF5A24),
+                      ),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
                           '${r.fuelAmount.toStringAsFixed(2)} L ÷ ${distance.toStringAsFixed(2)} km × 100 = ${(r.fuelConsumption ?? 0.0).toStringAsFixed(2)} L/100km',
                           style: const TextStyle(
-                              fontSize: 11,
-                              color: Color(0xFFFF5A24),
-                              fontWeight: FontWeight.bold),
+                            fontSize: 11,
+                            color: Color(0xFFFF5A24),
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ],
@@ -1772,12 +2055,19 @@ class _SlidableRefuelItemCardState extends State<_SlidableRefuelItemCard>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label,
-            style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant)),
+        Text(
+          label,
+          style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
+        ),
         const SizedBox(height: 3),
-        Text(value,
-            style: TextStyle(
-                fontSize: 13, fontWeight: FontWeight.bold, color: color)),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
       ],
     );
   }
@@ -1789,8 +2079,10 @@ class _SlidableRefuelItemCardState extends State<_SlidableRefuelItemCard>
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label,
-              style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant)),
+          Text(
+            label,
+            style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
+          ),
           const SizedBox(width: 8),
           Flexible(
             child: Text(
@@ -1826,8 +2118,9 @@ class _ExpenseRecordListView extends StatelessWidget {
       final vehicle = context.read<VehicleProvider>().currentVehicle;
       return _DataLoadErrorView(
         message: expenseProv.errorMessage!,
-        onRetry:
-            vehicle == null ? null : () => expenseProv.loadExpenses(vehicle.id),
+        onRetry: vehicle == null
+            ? null
+            : () => expenseProv.loadExpenses(vehicle.id),
       );
     }
 
@@ -1857,15 +2150,22 @@ class _ExpenseRecordListView extends StatelessWidget {
           child: ListTile(
             leading: CircleAvatar(
               backgroundColor: const Color(0xFF1E88E5).withValues(alpha: 0.12),
-              child: const Icon(AppIcons.account_balance_wallet,
-                  color: Color(0xFF1E88E5), size: 20),
+              child: const Icon(
+                AppIcons.account_balance_wallet,
+                color: Color(0xFF1E88E5),
+                size: 20,
+              ),
             ),
             title: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(e.category,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 14)),
+                Text(
+                  e.category,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
                 Text(
                   '¥${e.amount.toStringAsFixed(2)}',
                   style: const TextStyle(
@@ -1883,20 +2183,27 @@ class _ExpenseRecordListView extends StatelessWidget {
                 Text(
                   '${DateFormatter.formatYmdHm(e.expenseDate)}'
                   '${e.currentMileage != null ? " · ${e.currentMileage!.toStringAsFixed(1)}km" : ""}',
-                  style:
-                      TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colors.onSurfaceVariant,
+                  ),
                 ),
                 if (e.note != null && e.note!.isNotEmpty)
                   Text(
                     '备注: ${e.note}',
-                    style:
-                        TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: colors.onSurfaceVariant,
+                    ),
                   ),
               ],
             ),
             trailing: IconButton(
-              icon: const Icon(AppIcons.delete_outline,
-                  size: 18, color: Colors.red),
+              icon: const Icon(
+                AppIcons.delete_outline,
+                size: 18,
+                color: Colors.red,
+              ),
               onPressed: () async {
                 HapticFeedback.lightImpact();
                 final confirm = await showDialog<bool>(
@@ -1906,11 +2213,13 @@ class _ExpenseRecordListView extends StatelessWidget {
                     content: const Text('确定要删除这笔开销记录吗？'),
                     actions: [
                       TextButton(
-                          onPressed: () => Navigator.pop(ctx, false),
-                          child: const Text('取消')),
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text('取消'),
+                      ),
                       ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red),
+                          backgroundColor: Colors.red,
+                        ),
                         onPressed: () => Navigator.pop(ctx, true),
                         child: const Text('删除'),
                       ),
@@ -1922,9 +2231,9 @@ class _ExpenseRecordListView extends StatelessWidget {
                   final success = await expenseProv.deleteExpense(e.id);
                   if (!success) {
                     if (!context.mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('删除失败，请重试')),
-                    );
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(const SnackBar(content: Text('删除失败，请重试')));
                     return;
                   }
                   if (context.mounted) {

@@ -29,18 +29,24 @@ void main() {
 
     test('3. 全国其他地市坐标就近逆地理测试', () {
       // 广州塔坐标附近
-      final city1 =
-          LocationService.detectCityFromCoordinates(23.1064, 113.3245);
+      final city1 = LocationService.detectCityFromCoordinates(
+        23.1064,
+        113.3245,
+      );
       expect(city1, equals('广州'));
 
       // 武汉中南路坐标附近
-      final city2 =
-          LocationService.detectCityFromCoordinates(30.5420, 114.3350);
+      final city2 = LocationService.detectCityFromCoordinates(
+        30.5420,
+        114.3350,
+      );
       expect(city2, equals('武汉'));
 
       // 成都春熙路附近
-      final city3 =
-          LocationService.detectCityFromCoordinates(30.6574, 104.0818);
+      final city3 = LocationService.detectCityFromCoordinates(
+        30.6574,
+        104.0818,
+      );
       expect(city3, equals('成都'));
     });
 

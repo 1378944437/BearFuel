@@ -26,8 +26,10 @@ class ExpenseProvider extends ChangeNotifier {
   }
 
   /// 加载指定车辆的费用记录与保养提醒
-  Future<void> loadExpenses(String vehicleId,
-      {double currentMaxMileage = 0.0}) async {
+  Future<void> loadExpenses(
+    String vehicleId, {
+    double currentMaxMileage = 0.0,
+  }) async {
     final requestId = ++_loadRequestId;
     _currentVehicleId = vehicleId;
     _isLoading = true;
@@ -44,7 +46,8 @@ class ExpenseProvider extends ChangeNotifier {
         expenseRecords: _expenses,
       );
       AppConfig.log(
-          '已加载车辆($vehicleId)的 ${_expenses.length} 条费用记录，活跃提醒: ${_reminders.length} 项');
+        '已加载车辆($vehicleId)的 ${_expenses.length} 条费用记录，活跃提醒: ${_reminders.length} 项',
+      );
     } catch (e) {
       AppConfig.log('加载费用记录失败: $e');
       if (requestId == _loadRequestId && _currentVehicleId == vehicleId) {
@@ -58,14 +61,29 @@ class ExpenseProvider extends ChangeNotifier {
     }
   }
 
+  /// 清空内存中的费用与提醒状态（如当前车辆被删除后调用）
+  void clear() {
+    _loadRequestId++;
+    _currentVehicleId = null;
+    _expenses = [];
+    _reminders = [];
+    _isLoading = false;
+    _errorMessage = null;
+    notifyListeners();
+  }
+
   /// 新增费用记录
-  Future<bool> addExpense(ExpenseRecordModel record,
-      {double currentMaxMileage = 0.0}) async {
+  Future<bool> addExpense(
+    ExpenseRecordModel record, {
+    double currentMaxMileage = 0.0,
+  }) async {
     try {
       await _db.insertExpenseRecord(record);
       if (_currentVehicleId != null) {
-        await loadExpenses(_currentVehicleId!,
-            currentMaxMileage: currentMaxMileage);
+        await loadExpenses(
+          _currentVehicleId!,
+          currentMaxMileage: currentMaxMileage,
+        );
       }
       return true;
     } catch (e) {
@@ -75,14 +93,18 @@ class ExpenseProvider extends ChangeNotifier {
   }
 
   /// 删除费用记录
-  Future<bool> deleteExpense(String recordId,
-      {double currentMaxMileage = 0.0}) async {
+  Future<bool> deleteExpense(
+    String recordId, {
+    double currentMaxMileage = 0.0,
+  }) async {
     try {
       final count = await _db.deleteExpenseRecord(recordId);
       if (count == 0) return false;
       if (_currentVehicleId != null) {
-        await loadExpenses(_currentVehicleId!,
-            currentMaxMileage: currentMaxMileage);
+        await loadExpenses(
+          _currentVehicleId!,
+          currentMaxMileage: currentMaxMileage,
+        );
       }
       return true;
     } catch (e) {

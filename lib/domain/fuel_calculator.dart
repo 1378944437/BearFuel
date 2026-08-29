@@ -25,12 +25,21 @@ class FuelCalculationSummary {
 
 /// 小熊油耗核心计算引擎算法实现
 class FuelCalculator {
+  /// 是否为完成测量周期的记录（已算出百公里油耗）。
+  ///
+  /// 只有完成周期的记录携带权威区间里程；未加满记录的 distance
+  /// 只是"距上次加满"的展示值，会与下一个完成周期的里程重叠，
+  /// 因此聚合统计总里程时必须先按此条件过滤。
+  static bool isCompletedCycleRecord(RefuelRecordModel r) =>
+      r.fuelConsumption != null;
+
   /// 批量计算加油记录集，填充每条记录的百公里油耗、每公里花费及区间行驶里程
   ///
   /// [records]: 输入的原始记录（内部会自动按里程和日期升序排序后计算）
   /// 返回：计算并填充好油耗属性的记录列表副本
   static List<RefuelRecordModel> computeRecords(
-      List<RefuelRecordModel> records) {
+    List<RefuelRecordModel> records,
+  ) {
     if (records.isEmpty) return [];
 
     // 1. 按实际加油时间排序，里程只作为同一时刻的稳定次序。
@@ -103,8 +112,9 @@ class FuelCalculator {
           // 计算每公里成本 (¥/km) = 总费用 / 区间里程
           final costPerKm = totalCycleCost / deltaDistance;
 
-          current.fuelConsumption =
-              double.parse(consumption.toStringAsFixed(2));
+          current.fuelConsumption = double.parse(
+            consumption.toStringAsFixed(2),
+          );
           current.costPerKm = double.parse(costPerKm.toStringAsFixed(2));
           current.distance = double.parse(deltaDistance.toStringAsFixed(1));
         } else {
@@ -126,7 +136,8 @@ class FuelCalculator {
 
   /// 汇总计算整车的综合油耗、总花费、最佳/最差油耗指标
   static FuelCalculationSummary calculateSummary(
-      List<RefuelRecordModel> computedRecords) {
+    List<RefuelRecordModel> computedRecords,
+  ) {
     if (computedRecords.isEmpty) {
       return const FuelCalculationSummary();
     }

@@ -37,7 +37,8 @@ class _CustomCardState extends State<CustomCard> {
       duration: const Duration(milliseconds: 140),
       curve: Curves.easeOutCubic,
       child: Container(
-        margin: widget.margin ??
+        margin:
+            widget.margin ??
             const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
         decoration: BoxDecoration(
           color: widget.color ?? colors.surface,

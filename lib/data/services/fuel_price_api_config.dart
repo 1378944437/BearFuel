@@ -24,7 +24,8 @@ class FuelPriceApiConfigStore {
     final next = previous.then((_) async {
       final last = _lastRequestAt;
       if (last != null) {
-        final wait = const Duration(milliseconds: 1100) -
+        final wait =
+            const Duration(milliseconds: 1100) -
             DateTime.now().difference(last);
         if (!wait.isNegative && wait > Duration.zero) {
           await Future<void>.delayed(wait);

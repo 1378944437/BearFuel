@@ -14,6 +14,7 @@ import '../../../providers/expense_provider.dart';
 import '../../../providers/fuel_price_provider.dart';
 import '../../../providers/weather_provider.dart';
 import '../../../core/utils/date_formatter.dart';
+import '../../../core/utils/chart_axis_utils.dart';
 import '../../../presentation/widgets/custom_card.dart';
 import '../../../presentation/widgets/compact_date_range_dialog.dart';
 import '../../../presentation/widgets/app_page_title.dart';
@@ -34,40 +35,38 @@ class _StatisticsScreenState extends State<StatisticsScreen>
   String _selectedRange = '全部'; // 全部, 近半年, 今年, 自定义
   DateTimeRange? _customDateRange;
   String _selectedPeriodGranularity = '月度'; // 年度, 季度, 月度
-  bool _showBackToTop = false;
   bool _isAnomalyExpanded = false;
   bool _weatherRefreshQueued = false;
+
+  // —— 记忆化缓存：build/滚动/Tab切换每帧都会执行，
+  //    过滤结果与全量分析只在数据源或范围变化时重算 ——
+  List<RefuelRecordModel>? _filteredRecords;
+  List<RefuelRecordModel>? _filteredRecordsSource;
+  String? _filteredRecordsSig;
+  List<ExpenseRecordModel>? _filteredExpenses;
+  List<ExpenseRecordModel>? _filteredExpensesSource;
+  String? _filteredExpensesSig;
+
+  final _expenseStructureCache = _MemoCache<List<ExpenseCategoryShare>>();
+  final _periodStatsCache = _MemoCache<List<PeriodStatsItem>>();
+  final _consumptionTrendCache = _MemoCache<List<ChartDataPoint>>();
+  final _movingAvgCache = _MemoCache<List<ChartDataPoint>>();
+  final _costPerKmCache = _MemoCache<List<ChartDataPoint>>();
+  final _tenThousandCache = _MemoCache<List<TenThousandKmStats>>();
+  final _priceTrendCache = _MemoCache<List<ChartDataPoint>>();
+  final _tempVsConsCache = _MemoCache<List<TemperatureVsConsumptionPoint>>();
+  final _anomalyCache = _MemoCache<List<AnomalyDiagnosticItem>>();
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _tabController.addListener(_onTabChanged);
-    _scrollController.addListener(_onScroll);
   }
 
   void _onTabChanged() {
     if (!mounted || _tabController.indexIsChanging) return;
     setState(() {});
-  }
-
-  void _onScroll() {
-    if (!_scrollController.hasClients) return;
-    final show = _scrollController.offset > 350;
-    if (show != _showBackToTop) {
-      setState(() => _showBackToTop = show);
-    }
-  }
-
-  void _scrollToTop() {
-    HapticFeedback.lightImpact();
-    if (_scrollController.hasClients) {
-      _scrollController.animateTo(
-        0,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOutCubic,
-      );
-    }
   }
 
   @override
@@ -87,64 +86,125 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     final allExpenses = expenseProv.expenses;
     final now = DateTime.now();
 
-    // 1. 根据顶部【统计周期】过滤生效的数据子集
-    final List<RefuelRecordModel> records = allRecords.where((r) {
-      if (_selectedRange == '近半年') {
-        final age = now.difference(r.refuelDate);
-        return !age.isNegative && age.inDays <= 183;
-      } else if (_selectedRange == '今年') {
-        return r.refuelDate.year == now.year;
-      } else if (_selectedRange == '自定义' && _customDateRange != null) {
-        return r.refuelDate.isAfter(
-                _customDateRange!.start.subtract(const Duration(days: 1))) &&
-            r.refuelDate
-                .isBefore(_customDateRange!.end.add(const Duration(days: 1)));
-      }
-      return true;
-    }).toList();
+    // 1. 根据顶部【统计周期】过滤生效的数据子集（按数据源+范围记忆化，
+    //    保证下游分析缓存可以按列表引用判断是否需要重算）
+    final filterSignature =
+        '$_selectedRange|'
+        '${_customDateRange?.start.microsecondsSinceEpoch ?? 0}|'
+        '${_customDateRange?.end.microsecondsSinceEpoch ?? 0}';
+    List<RefuelRecordModel> records;
+    if (identical(allRecords, _filteredRecordsSource) &&
+        _filteredRecordsSig == filterSignature &&
+        _filteredRecords != null) {
+      records = _filteredRecords!;
+    } else {
+      records = allRecords.where((r) {
+        if (_selectedRange == '近半年') {
+          final age = now.difference(r.refuelDate);
+          return !age.isNegative && age.inDays <= 183;
+        } else if (_selectedRange == '今年') {
+          return r.refuelDate.year == now.year;
+        } else if (_selectedRange == '自定义' && _customDateRange != null) {
+          // 按日界比较：起始日 00:00 至结束日 23:59:59，避免前一日记录漏入
+          final start = DateTime(
+            _customDateRange!.start.year,
+            _customDateRange!.start.month,
+            _customDateRange!.start.day,
+          );
+          final end = DateTime(
+            _customDateRange!.end.year,
+            _customDateRange!.end.month,
+            _customDateRange!.end.day,
+            23,
+            59,
+            59,
+          );
+          return !r.refuelDate.isBefore(start) && !r.refuelDate.isAfter(end);
+        }
+        return true;
+      }).toList();
+      _filteredRecordsSource = allRecords;
+      _filteredRecordsSig = filterSignature;
+      _filteredRecords = records;
+    }
 
-    final List<ExpenseRecordModel> expenses = allExpenses.where((e) {
-      if (_selectedRange == '近半年') {
-        final age = now.difference(e.expenseDate);
-        return !age.isNegative && age.inDays <= 183;
-      } else if (_selectedRange == '今年') {
-        return e.expenseDate.year == now.year;
-      } else if (_selectedRange == '自定义' && _customDateRange != null) {
-        return e.expenseDate.isAfter(
-                _customDateRange!.start.subtract(const Duration(days: 1))) &&
-            e.expenseDate
-                .isBefore(_customDateRange!.end.add(const Duration(days: 1)));
-      }
-      return true;
-    }).toList();
+    List<ExpenseRecordModel> expenses;
+    if (identical(allExpenses, _filteredExpensesSource) &&
+        _filteredExpensesSig == filterSignature &&
+        _filteredExpenses != null) {
+      expenses = _filteredExpenses!;
+    } else {
+      expenses = allExpenses.where((e) {
+        if (_selectedRange == '近半年') {
+          final age = now.difference(e.expenseDate);
+          return !age.isNegative && age.inDays <= 183;
+        } else if (_selectedRange == '今年') {
+          return e.expenseDate.year == now.year;
+        } else if (_selectedRange == '自定义' && _customDateRange != null) {
+          final start = DateTime(
+            _customDateRange!.start.year,
+            _customDateRange!.start.month,
+            _customDateRange!.start.day,
+          );
+          final end = DateTime(
+            _customDateRange!.end.year,
+            _customDateRange!.end.month,
+            _customDateRange!.end.day,
+            23,
+            59,
+            59,
+          );
+          return !e.expenseDate.isBefore(start) && !e.expenseDate.isAfter(end);
+        }
+        return true;
+      }).toList();
+      _filteredExpensesSource = allExpenses;
+      _filteredExpensesSig = filterSignature;
+      _filteredExpenses = expenses;
+    }
 
     // 2. 动态实时重新计算当前选定【统计范围】内的核心四大指标
-    final double rangeFuelCost =
-        records.fold(0.0, (sum, r) => sum + r.totalPrice);
-    final double rangeDistance =
-        records.fold(0.0, (sum, r) => sum + (r.distance ?? 0.0));
-    final double rangeFuelAmount =
-        records.fold(0.0, (sum, r) => sum + r.fuelAmount);
-    final double rangeOtherCost =
-        expenses.fold(0.0, (sum, e) => sum + e.amount);
+    final double rangeFuelCost = records.fold(
+      0.0,
+      (sum, r) => sum + r.totalPrice,
+    );
+    // 只累计完成测量周期的里程，避免未加满记录与下一周期重复计算
+    final double rangeDistance = records
+        .where(FuelCalculator.isCompletedCycleRecord)
+        .fold(0.0, (sum, r) => sum + (r.distance ?? 0.0));
+    final double rangeFuelAmount = records.fold(
+      0.0,
+      (sum, r) => sum + r.fuelAmount,
+    );
+    final double rangeOtherCost = expenses.fold(
+      0.0,
+      (sum, e) => sum + e.amount,
+    );
 
-    final validRecords = records.where((r) =>
-        r.fuelConsumption != null &&
-        r.fuelConsumption! > 0 &&
-        r.distance != null &&
-        r.distance! > 0);
+    final validRecords = records.where(
+      (r) =>
+          r.fuelConsumption != null &&
+          r.fuelConsumption! > 0 &&
+          r.distance != null &&
+          r.distance! > 0,
+    );
     final validDistance = validRecords.fold(0.0, (sum, r) => sum + r.distance!);
     final validFuel = validRecords.fold(
-        0.0, (sum, r) => sum + (r.fuelConsumption! * r.distance!) / 100.0);
+      0.0,
+      (sum, r) => sum + (r.fuelConsumption! * r.distance!) / 100.0,
+    );
     final validCost = validRecords.fold(
-        0.0, (sum, r) => sum + (r.costPerKm ?? 0.0) * r.distance!);
+      0.0,
+      (sum, r) => sum + (r.costPerKm ?? 0.0) * r.distance!,
+    );
     final double rangeAvgConsumption = validDistance > 0
         ? (validFuel / validDistance) * 100.0
         : (records.isNotEmpty && refuelProv.summary.averageConsumption > 0
-            ? refuelProv.summary.averageConsumption
-            : 0.0);
-    final double rangeCostPerKm =
-        validDistance > 0 ? validCost / validDistance : 0.0;
+              ? refuelProv.summary.averageConsumption
+              : 0.0);
+    final double rangeCostPerKm = validDistance > 0
+        ? validCost / validDistance
+        : 0.0;
 
     final dynamicRangeSummary = FuelCalculationSummary(
       averageConsumption: rangeAvgConsumption,
@@ -161,10 +221,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: const AppPageTitle(
-          title: '统计图表',
-          subtitle: '油耗、天气与成本分析',
-        ),
+        title: const AppPageTitle(title: '统计图表', subtitle: '油耗、天气与成本分析'),
         actions: [
           IconButton(
             icon: const Icon(AppIcons.settings_outlined),
@@ -174,7 +231,8 @@ class _StatisticsScreenState extends State<StatisticsScreen>
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                    builder: (_) => const ServiceSettingsScreen()),
+                  builder: (_) => const ServiceSettingsScreen(),
+                ),
               );
             },
           ),
@@ -186,8 +244,10 @@ class _StatisticsScreenState extends State<StatisticsScreen>
           indicatorColor: const Color(0xFFFF5A24),
           labelColor: const Color(0xFFFF5A24),
           unselectedLabelColor: colors.onSurfaceVariant,
-          labelStyle:
-              const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+          labelStyle: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+          ),
           tabs: const [
             Tab(text: '综合总览'),
             Tab(text: '油耗进阶'),
@@ -206,14 +266,20 @@ class _StatisticsScreenState extends State<StatisticsScreen>
               children: [
                 Row(
                   children: [
-                    const Icon(AppIcons.filter_alt_outlined,
-                        size: 16, color: Color(0xFFFF5A24)),
+                    const Icon(
+                      AppIcons.filter_alt_outlined,
+                      size: 16,
+                      color: Color(0xFFFF5A24),
+                    ),
                     const SizedBox(width: 4),
-                    Text('统计周期:',
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: colors.onSurfaceVariant)),
+                    Text(
+                      '统计周期:',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
                   ],
                 ),
                 SingleChildScrollView(
@@ -232,7 +298,9 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                             borderRadius: BorderRadius.circular(20),
                             child: Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 11, vertical: 4),
+                                horizontal: 11,
+                                vertical: 4,
+                              ),
                               decoration: BoxDecoration(
                                 color: isSelected
                                     ? const Color(0xFFFF5A24)
@@ -280,7 +348,9 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                           borderRadius: BorderRadius.circular(20),
                           child: Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 4),
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
                             decoration: BoxDecoration(
                               color: _selectedRange == '自定义'
                                   ? const Color(0xFF1E88E5)
@@ -336,46 +406,31 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                   physics: const BouncingScrollPhysics(),
                   children: [
                     // 1. 综合总览看板
-                    _buildOverviewTab(context, records, expenses,
-                        dynamicRangeSummary, rangeOtherCost),
+                    _buildOverviewTab(
+                      context,
+                      records,
+                      expenses,
+                      dynamicRangeSummary,
+                      rangeOtherCost,
+                    ),
 
                     // 2. 油耗进阶分析看板
                     _buildAdvancedFuelTab(
-                        context, records, rangeAvgConsumption),
+                      context,
+                      records,
+                      rangeAvgConsumption,
+                    ),
 
                     // 3. 环境气温看板
                     _buildClimateAndMarketTab(context, records),
                   ],
                 ),
 
-                // 右下角回到顶部悬浮按钮（贴合底栏收缩状态，留白适中）
+                // 右下角回到顶部悬浮按钮（自行监听滚动，不触发整页重建）
                 Positioned(
                   right: 16,
                   bottom: 28,
-                  child: AnimatedScale(
-                    scale: _showBackToTop ? 1.0 : 0.0,
-                    duration: const Duration(milliseconds: 200),
-                    child: AnimatedOpacity(
-                      opacity: _showBackToTop ? 1.0 : 0.0,
-                      duration: const Duration(milliseconds: 200),
-                      child: Material(
-                        elevation: 4,
-                        shape: const CircleBorder(),
-                        color: Theme.of(context).cardColor,
-                        child: InkWell(
-                          customBorder: const CircleBorder(),
-                          onTap: _scrollToTop,
-                          child: Container(
-                            width: 44,
-                            height: 44,
-                            alignment: Alignment.center,
-                            child: const Icon(AppIcons.arrow_upward,
-                                size: 20, color: Color(0xFFFF5A24)),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+                  child: _BackToTopButton(scrollController: _scrollController),
                 ),
               ],
             ),
@@ -395,15 +450,21 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     FuelCalculationSummary summary,
     double totalOtherExpense,
   ) {
-    final expenseShares = StatisticsService.getExpenseStructure(
-      refuelRecords: records,
-      expenseRecords: expenses,
+    final expenseShares = _expenseStructureCache.get(
+      [records, expenses],
+      () => StatisticsService.getExpenseStructure(
+        refuelRecords: records,
+        expenseRecords: expenses,
+      ),
     );
 
-    final periodStats = StatisticsService.getPeriodStats(
-      records: records,
-      expenses: expenses,
-      periodType: _selectedPeriodGranularity,
+    final periodStats = _periodStatsCache.get(
+      [records, expenses, _selectedPeriodGranularity],
+      () => StatisticsService.getPeriodStats(
+        records: records,
+        expenses: expenses,
+        periodType: _selectedPeriodGranularity,
+      ),
     );
 
     return ListView(
@@ -423,15 +484,26 @@ class _StatisticsScreenState extends State<StatisticsScreen>
   // ===========================================================================
   // 2. 油耗进阶分析看板 (Advanced Fuel Tab - 宽度最大化)
   // ===========================================================================
-  Widget _buildAdvancedFuelTab(BuildContext context,
-      List<RefuelRecordModel> records, double avgConsumption) {
-    final singleConsumptionTrends =
-        StatisticsService.getConsumptionTrend(records);
-    final movingAvgEvolution =
-        StatisticsService.getMovingAverageEvolutionTrend(records);
-    final costPerKmTrends = StatisticsService.getCostPerKmTrend(records);
-    final tenThousandStats = StatisticsService.getTenThousandKmStats(records);
-    final priceTrends = StatisticsService.getPriceTrend(records);
+  Widget _buildAdvancedFuelTab(
+    BuildContext context,
+    List<RefuelRecordModel> records,
+    double avgConsumption,
+  ) {
+    final singleConsumptionTrends = _consumptionTrendCache.get([
+      records,
+    ], () => StatisticsService.getConsumptionTrend(records));
+    final movingAvgEvolution = _movingAvgCache.get([
+      records,
+    ], () => StatisticsService.getMovingAverageEvolutionTrend(records));
+    final costPerKmTrends = _costPerKmCache.get([
+      records,
+    ], () => StatisticsService.getCostPerKmTrend(records));
+    final tenThousandStats = _tenThousandCache.get([
+      records,
+    ], () => StatisticsService.getTenThousandKmStats(records));
+    final priceTrends = _priceTrendCache.get([
+      records,
+    ], () => StatisticsService.getPriceTrend(records));
 
     return ListView(
       physics: const BouncingScrollPhysics(),
@@ -539,22 +611,33 @@ class _StatisticsScreenState extends State<StatisticsScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                    '实时天气 · ${weather.cityName.isEmpty ? city : weather.cityName}',
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                  '实时天气 · ${weather.cityName.isEmpty ? city : weather.cityName}',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 4),
                 Text(
                   '${weather.temperature?.toStringAsFixed(1) ?? '--'}°C${weather.condition == null ? '' : ' · ${weather.condition}'}',
                   style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.bold),
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 if (details.isNotEmpty)
-                  Text(details.join(' · '),
-                      style: TextStyle(
-                          fontSize: 11, color: colors.onSurfaceVariant)),
-                const SizedBox(height: 2),
-                Text('墨迹天气 · ${weatherProv.historyWindow.coverageLabel}',
+                  Text(
+                    details.join(' · '),
                     style: TextStyle(
-                        fontSize: 10, color: colors.onSurfaceVariant)),
+                      fontSize: 11,
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                const SizedBox(height: 2),
+                Text(
+                  '墨迹天气 · ${weatherProv.historyWindow.coverageLabel}',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
               ],
             ),
           ),
@@ -564,7 +647,9 @@ class _StatisticsScreenState extends State<StatisticsScreen>
   }
 
   Widget _buildClimateAndMarketTab(
-      BuildContext context, List<RefuelRecordModel> records) {
+    BuildContext context,
+    List<RefuelRecordModel> records,
+  ) {
     final colors = Theme.of(context).colorScheme;
     final fuelProv = context.watch<FuelPriceProvider>();
     final weatherProv = context.watch<WeatherProvider>();
@@ -574,15 +659,17 @@ class _StatisticsScreenState extends State<StatisticsScreen>
         _weatherRefreshQueued = false;
         if (!mounted || _tabController.index != 2) return;
         context.read<WeatherProvider>().refreshForActualLocation(
-              fallbackCity: fuelProv.currentCity,
-              referenceDates: records.map((record) => record.refuelDate),
-            );
+          fallbackCity: fuelProv.currentCity,
+          referenceDates: records.map((record) => record.refuelDate),
+        );
       });
     }
-    final displayTempVsCons =
-        StatisticsService.getTemperatureVsConsumptionFromSnapshots(
-      records,
-      weatherProv.snapshots,
+    final displayTempVsCons = _tempVsConsCache.get(
+      [records, weatherProv.snapshots],
+      () => StatisticsService.getTemperatureVsConsumptionFromSnapshots(
+        records,
+        weatherProv.snapshots,
+      ),
     );
     String? weatherCity;
     final currentWeatherCity = weatherProv.current?.cityName;
@@ -603,20 +690,31 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     final rawChartMin = boundedChartValues.reduce((a, b) => a < b ? a : b);
     final rawChartMax = boundedChartValues.reduce((a, b) => a > b ? a : b);
     final chartPadding = math.max(2.0, (rawChartMax - rawChartMin) * 0.1);
-    final chartMinY =
-        math.min(0.0, (rawChartMin - chartPadding).floorToDouble());
-    final chartMaxY =
-        math.max(0.0, (rawChartMax + chartPadding).ceilToDouble());
-    final chartYInterval =
-        math.max(1.0, (chartMaxY - chartMinY) / 5).ceilToDouble();
+    final chartMinY = math.min(
+      0.0,
+      (rawChartMin - chartPadding).floorToDouble(),
+    );
+    final chartMaxY = math.max(
+      0.0,
+      (rawChartMax + chartPadding).ceilToDouble(),
+    );
+    final chartYInterval = ChartAxisUtils.niceInterval(
+      chartMaxY - chartMinY,
+      maxTicks: 5,
+    );
+    final tempChartXStep = ChartAxisUtils.xLabelStep(displayTempVsCons.length);
 
-    final anomalies = StatisticsService.getAnomalyDiagnostics(records);
+    final anomalies = _anomalyCache.get([
+      records,
+    ], () => StatisticsService.getAnomalyDiagnostics(records));
     final validConsumptionCount = records
-        .where((r) =>
-            r.fuelConsumption != null &&
-            r.fuelConsumption! > 0 &&
-            r.distance != null &&
-            r.distance! > 0)
+        .where(
+          (r) =>
+              r.fuelConsumption != null &&
+              r.fuelConsumption! > 0 &&
+              r.distance != null &&
+              r.distance! > 0,
+        )
         .length;
 
     return ListView(
@@ -647,17 +745,26 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                   children: [
                     const Row(
                       children: [
-                        Icon(AppIcons.thermostat_outlined,
-                            color: Colors.orange, size: 18),
+                        Icon(
+                          AppIcons.thermostat_outlined,
+                          color: Colors.orange,
+                          size: 18,
+                        ),
                         SizedBox(width: 6),
-                        Text('月度能耗与地区气温关联图',
-                            style: TextStyle(
-                                fontSize: 14, fontWeight: FontWeight.bold)),
+                        Text(
+                          '月度能耗与地区气温关联图',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ],
                     ),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 2),
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFF1E88E5).withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(4),
@@ -665,17 +772,22 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                       child: Text(
                         '数据地区: ${weatherCity ?? '暂无定位地区'}',
                         style: const TextStyle(
-                            fontSize: 10,
-                            color: Color(0xFF1E88E5),
-                            fontWeight: FontWeight.bold),
+                          fontSize: 10,
+                          color: Color(0xFF1E88E5),
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 4),
-                Text('关联已保存的 ${weatherCity ?? '实际定位地区'} 每日天气快照，揭示温度变化与油耗的关系',
-                    style: TextStyle(
-                        fontSize: 11, color: colors.onSurfaceVariant)),
+                Text(
+                  '关联已保存的 ${weatherCity ?? '实际定位地区'} 每日天气快照，揭示温度变化与油耗的关系',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
                 const SizedBox(height: 10),
 
                 // 图例说明
@@ -717,28 +829,39 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                               '油耗: ${p.avgConsumption > 0 ? "${p.avgConsumption}L" : "无数据"}\n'
                               '当地气温: ${p.estimatedTemperature}°C',
                               const TextStyle(
-                                  color: Colors.white, fontSize: 11),
+                                color: Colors.white,
+                                fontSize: 11,
+                              ),
                             );
                           },
                         ),
                       ),
                       titlesData: FlTitlesData(
                         topTitles: const AxisTitles(
-                            sideTitles: SideTitles(showTitles: false)),
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
                         rightTitles: const AxisTitles(
-                            sideTitles: SideTitles(showTitles: false)),
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
                         bottomTitles: AxisTitles(
                           sideTitles: SideTitles(
                             showTitles: true,
                             getTitlesWidget: (val, meta) {
                               final idx = val.toInt();
-                              if (idx >= 0 && idx < displayTempVsCons.length) {
+                              if (ChartAxisUtils.shouldShowXLabel(
+                                idx,
+                                displayTempVsCons.length,
+                                tempChartXStep,
+                              )) {
                                 return Padding(
                                   padding: const EdgeInsets.only(top: 4),
-                                  child: Text(displayTempVsCons[idx].monthLabel,
-                                      style: TextStyle(
-                                          fontSize: 10,
-                                          color: colors.onSurfaceVariant)),
+                                  child: Text(
+                                    displayTempVsCons[idx].monthLabel,
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: colors.onSurfaceVariant,
+                                    ),
+                                  ),
                                 );
                               }
                               return const SizedBox.shrink();
@@ -748,13 +871,19 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                         leftTitles: AxisTitles(
                           sideTitles: SideTitles(
                             showTitles: true,
-                            reservedSize: 26,
+                            reservedSize: 28,
                             interval: chartYInterval,
                             getTitlesWidget: (val, meta) {
-                              return Text('${val.toInt()}',
-                                  style: TextStyle(
-                                      fontSize: 10,
-                                      color: colors.onSurfaceVariant));
+                              return Text(
+                                ChartAxisUtils.formatAxisValue(
+                                  val,
+                                  chartYInterval,
+                                ),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: colors.onSurfaceVariant,
+                                ),
+                              );
                             },
                           ),
                         ),
@@ -803,8 +932,10 @@ class _StatisticsScreenState extends State<StatisticsScreen>
           Icon(AppIcons.info_outline, color: colors.onSurfaceVariant),
           const SizedBox(width: 8),
           Expanded(
-            child:
-                Text(message, style: TextStyle(color: colors.onSurfaceVariant)),
+            child: Text(
+              message,
+              style: TextStyle(color: colors.onSurfaceVariant),
+            ),
           ),
         ],
       ),
@@ -812,7 +943,9 @@ class _StatisticsScreenState extends State<StatisticsScreen>
   }
 
   Widget _buildSummaryGrid(
-      FuelCalculationSummary summary, double totalOtherExpense) {
+    FuelCalculationSummary summary,
+    double totalOtherExpense,
+  ) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -864,7 +997,11 @@ class _StatisticsScreenState extends State<StatisticsScreen>
   }
 
   Widget _buildMetricItem(
-      String title, String value, String subtitle, Color color) {
+    String title,
+    String value,
+    String subtitle,
+    Color color,
+  ) {
     final colors = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(9),
@@ -877,17 +1014,27 @@ class _StatisticsScreenState extends State<StatisticsScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Text(title,
-              style: TextStyle(
-                  fontSize: 11, color: color, fontWeight: FontWeight.bold)),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 11,
+              color: color,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(height: 2),
-          Text(value,
-              style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: colors.onSurface)),
-          Text(subtitle,
-              style: TextStyle(fontSize: 10, color: colors.onSurfaceVariant)),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: colors.onSurface,
+            ),
+          ),
+          Text(
+            subtitle,
+            style: TextStyle(fontSize: 10, color: colors.onSurfaceVariant),
+          ),
         ],
       ),
     );
@@ -895,7 +1042,9 @@ class _StatisticsScreenState extends State<StatisticsScreen>
 
   // 周期报表卡片（彻底防溢出设计：双列自适应弹性伸缩与单行截断保护）
   Widget _buildPeriodStatsCard(
-      BuildContext context, List<PeriodStatsItem> periodStats) {
+    BuildContext context,
+    List<PeriodStatsItem> periodStats,
+  ) {
     final colors = Theme.of(context).colorScheme;
     return CustomCard(
       margin: EdgeInsets.zero,
@@ -905,11 +1054,16 @@ class _StatisticsScreenState extends State<StatisticsScreen>
         children: [
           Row(
             children: [
-              const Icon(AppIcons.calendar_view_month,
-                  color: Color(0xFFFF5A24), size: 18),
+              const Icon(
+                AppIcons.calendar_view_month,
+                color: Color(0xFFFF5A24),
+                size: 18,
+              ),
               const SizedBox(width: 6),
-              const Text('周期报表',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+              const Text(
+                '周期报表',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+              ),
               const Spacer(),
               Row(
                 mainAxisSize: MainAxisSize.min,
@@ -925,7 +1079,9 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                       borderRadius: BorderRadius.circular(6),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 3),
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
                         decoration: BoxDecoration(
                           color: isSel
                               ? const Color(0xFFFF5A24)
@@ -936,8 +1092,9 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                           g,
                           style: TextStyle(
                             fontSize: 11,
-                            fontWeight:
-                                isSel ? FontWeight.bold : FontWeight.normal,
+                            fontWeight: isSel
+                                ? FontWeight.bold
+                                : FontWeight.normal,
                             color: isSel ? Colors.white : colors.onSurface,
                           ),
                         ),
@@ -953,19 +1110,25 @@ class _StatisticsScreenState extends State<StatisticsScreen>
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 20),
               child: Center(
-                  child: Text('暂无周期统计数据',
-                      style: TextStyle(color: colors.onSurfaceVariant))),
+                child: Text(
+                  '暂无周期统计数据',
+                  style: TextStyle(color: colors.onSurfaceVariant),
+                ),
+              ),
             )
           else
             Column(
               children: periodStats.reversed.take(6).map((p) {
                 return Container(
                   margin: const EdgeInsets.only(bottom: 6),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
-                    color:
-                        colors.surfaceContainerHighest.withValues(alpha: 0.35),
+                    color: colors.surfaceContainerHighest.withValues(
+                      alpha: 0.35,
+                    ),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Column(
@@ -978,7 +1141,9 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                           Text(
                             p.label,
                             style: const TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 13),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
                           ),
                           Text(
                             '¥${p.totalExpense.toStringAsFixed(2)}',
@@ -999,7 +1164,9 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                             child: Text(
                               '行驶 ${p.mileage.toStringAsFixed(2)} km  ·  耗油 ${p.fuelAmount.toStringAsFixed(2)} L',
                               style: TextStyle(
-                                  fontSize: 11, color: colors.onSurfaceVariant),
+                                fontSize: 11,
+                                color: colors.onSurfaceVariant,
+                              ),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
@@ -1009,7 +1176,9 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                                 ? '均 ${p.avgConsumption.toStringAsFixed(2)}L | ¥${p.costPerKm.toStringAsFixed(2)}/km'
                                 : '¥${p.costPerKm.toStringAsFixed(2)}/km',
                             style: TextStyle(
-                                fontSize: 11, color: colors.onSurfaceVariant),
+                              fontSize: 11,
+                              color: colors.onSurfaceVariant,
+                            ),
                           ),
                         ],
                       ),
@@ -1025,7 +1194,9 @@ class _StatisticsScreenState extends State<StatisticsScreen>
 
   // 优化升级：每万公里阶段油耗统计卡片
   Widget _buildTenThousandKmCard(
-      BuildContext context, List<TenThousandKmStats> stages) {
+    BuildContext context,
+    List<TenThousandKmStats> stages,
+  ) {
     final colors = Theme.of(context).colorScheme;
     final isDark = colors.brightness == Brightness.dark;
     return CustomCard(
@@ -1036,23 +1207,33 @@ class _StatisticsScreenState extends State<StatisticsScreen>
         children: [
           const Row(
             children: [
-              Icon(AppIcons.stairs_outlined,
-                  color: Color(0xFFFF5A24), size: 18),
+              Icon(
+                AppIcons.stairs_outlined,
+                color: Color(0xFFFF5A24),
+                size: 18,
+              ),
               SizedBox(width: 6),
-              Text('每万公里阶段油耗统计',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+              Text(
+                '每万公里阶段油耗统计',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+              ),
             ],
           ),
           const SizedBox(height: 4),
-          Text('全生命周期各万公里里程段机械状态与磨合情况',
-              style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant)),
+          Text(
+            '全生命周期各万公里里程段机械状态与磨合情况',
+            style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
+          ),
           const SizedBox(height: 10),
           if (stages.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 20),
               child: Center(
-                  child: Text('里程跨度不足 1 万公里，暂无阶段数据',
-                      style: TextStyle(color: colors.onSurfaceVariant))),
+                child: Text(
+                  '里程跨度不足 1 万公里，暂无阶段数据',
+                  style: TextStyle(color: colors.onSurfaceVariant),
+                ),
+              ),
             )
           else
             Column(
@@ -1061,11 +1242,13 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                   margin: const EdgeInsets.only(bottom: 8),
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color:
-                        colors.surfaceContainerHighest.withValues(alpha: 0.35),
+                    color: colors.surfaceContainerHighest.withValues(
+                      alpha: 0.35,
+                    ),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                        color: colors.outline.withValues(alpha: 0.2)),
+                      color: colors.outline.withValues(alpha: 0.2),
+                    ),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1078,32 +1261,45 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                               Container(
                                 padding: const EdgeInsets.all(4),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFFFF5A24)
-                                      .withValues(alpha: 0.15),
+                                  color: const Color(
+                                    0xFFFF5A24,
+                                  ).withValues(alpha: 0.15),
                                   shape: BoxShape.circle,
                                 ),
-                                child: const Icon(AppIcons.speed,
-                                    color: Color(0xFFFF5A24), size: 14),
+                                child: const Icon(
+                                  AppIcons.speed,
+                                  color: Color(0xFFFF5A24),
+                                  size: 14,
+                                ),
                               ),
                               const SizedBox(width: 6),
-                              Text(s.stageLabel,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13)),
+                              Text(
+                                s.stageLabel,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                              ),
                               const SizedBox(width: 6),
                               Container(
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 5, vertical: 1),
+                                  horizontal: 5,
+                                  vertical: 1,
+                                ),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF1E88E5)
-                                      .withValues(alpha: 0.1),
+                                  color: const Color(
+                                    0xFF1E88E5,
+                                  ).withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(3),
                                 ),
-                                child: Text(s.phaseTitle,
-                                    style: const TextStyle(
-                                        fontSize: 10,
-                                        color: Color(0xFF1E88E5),
-                                        fontWeight: FontWeight.bold)),
+                                child: Text(
+                                  s.phaseTitle,
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    color: Color(0xFF1E88E5),
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
                               ),
                             ],
                           ),
@@ -1112,9 +1308,10 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                                 ? '${s.avgConsumption.toStringAsFixed(2)} L'
                                 : '--',
                             style: const TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFFFF5A24)),
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFFFF5A24),
+                            ),
                           ),
                         ],
                       ),
@@ -1125,7 +1322,9 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                           Text(
                             '行驶 +${s.totalDistance.toStringAsFixed(2)}km · 消耗 ${s.totalFuel.toStringAsFixed(2)}L · 记账 ${s.recordCount}笔',
                             style: TextStyle(
-                                fontSize: 11, color: colors.onSurfaceVariant),
+                              fontSize: 11,
+                              color: colors.onSurfaceVariant,
+                            ),
                           ),
                           if (s.diffFromPrevious != null)
                             Row(
@@ -1137,11 +1336,11 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                                   size: 12,
                                   color: s.diffFromPrevious! <= 0
                                       ? (isDark
-                                          ? Colors.green[300]!
-                                          : Colors.green[700]!)
+                                            ? Colors.green[300]!
+                                            : Colors.green[700]!)
                                       : (isDark
-                                          ? Colors.orange[300]!
-                                          : Colors.orange[800]!),
+                                            ? Colors.orange[300]!
+                                            : Colors.orange[800]!),
                                 ),
                                 Text(
                                   '${s.diffFromPrevious! > 0 ? "+" : ""}${s.diffFromPrevious!.toStringAsFixed(2)}L',
@@ -1150,11 +1349,11 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                                     fontWeight: FontWeight.bold,
                                     color: s.diffFromPrevious! <= 0
                                         ? (isDark
-                                            ? Colors.green[300]!
-                                            : Colors.green[700]!)
+                                              ? Colors.green[300]!
+                                              : Colors.green[700]!)
                                         : (isDark
-                                            ? Colors.orange[300]!
-                                            : Colors.orange[800]!),
+                                              ? Colors.orange[300]!
+                                              : Colors.orange[800]!),
                                   ),
                                 ),
                               ],
@@ -1190,12 +1389,15 @@ class _StatisticsScreenState extends State<StatisticsScreen>
         padding: const EdgeInsets.all(20.0),
         child: Column(
           children: [
-            Text(title,
-                style:
-                    const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+            Text(
+              title,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 8),
-            Text('需要至少 2 笔记录才能生成此趋势图',
-                style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12)),
+            Text(
+              '需要至少 2 笔记录才能生成此趋势图',
+              style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
+            ),
           ],
         ),
       );
@@ -1208,8 +1410,8 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     final maxY = (rawMax * 1.1).ceilToDouble();
     final safeMaxY = (maxY <= minY) ? minY + 4.0 : maxY;
     final span = safeMaxY - minY;
-    final double yInterval =
-        span > 20 ? (span / 4).roundToDouble() : (span > 6 ? 2.0 : 1.0);
+    final double yInterval = ChartAxisUtils.niceInterval(span, maxTicks: 4);
+    final trendXStep = ChartAxisUtils.xLabelStep(dataPoints.length);
 
     return CustomCard(
       margin: EdgeInsets.zero,
@@ -1220,50 +1422,69 @@ class _StatisticsScreenState extends State<StatisticsScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(title,
-                  style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.bold)),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               if (baselineValue != null && baselineValue > 0)
-                Text('均值: ${baselineValue.toStringAsFixed(2)} $unit',
-                    style: TextStyle(
-                        fontSize: 11,
-                        color: lineColor,
-                        fontWeight: FontWeight.bold)),
+                Text(
+                  '均值: ${baselineValue.toStringAsFixed(2)} $unit',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: lineColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 3),
-          Text(subtitle,
-              style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant)),
+          Text(
+            subtitle,
+            style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
+          ),
           if (dataPoints.length >= 3) ...[
             const SizedBox(height: 6),
             Row(
               children: [
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 1.5,
+                  ),
                   decoration: BoxDecoration(
                     color: minColor.withValues(alpha: 0.14),
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  child: Text('最低: ${rawMin.toStringAsFixed(2)} $unit',
-                      style: TextStyle(
-                          fontSize: 10,
-                          color: minColor,
-                          fontWeight: FontWeight.bold)),
+                  child: Text(
+                    '最低: ${rawMin.toStringAsFixed(2)} $unit',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: minColor,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 6),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 1.5,
+                  ),
                   decoration: BoxDecoration(
                     color: maxColor.withValues(alpha: 0.14),
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  child: Text('最高: ${rawMax.toStringAsFixed(2)} $unit',
-                      style: TextStyle(
-                          fontSize: 10,
-                          color: maxColor,
-                          fontWeight: FontWeight.bold)),
+                  child: Text(
+                    '最高: ${rawMax.toStringAsFixed(2)} $unit',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: maxColor,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -1281,8 +1502,10 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                   touchTooltipData: LineTouchTooltipData(
                     getTooltipColor: (_) => const Color(0xDE1A1A1A),
                     tooltipRoundedRadius: 8,
-                    tooltipPadding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    tooltipPadding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
                     getTooltipItems: (touchedSpots) {
                       return touchedSpots.map((spot) {
                         final idx = spot.x.toInt();
@@ -1292,19 +1515,21 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                         final dateStr = point != null
                             ? DateFormatter.formatChineseYmd(point.date)
                             : '';
-                        final extraStr =
-                            point?.extra != null ? '\n${point!.extra}' : '';
-                        final diffStr = (baselineValue != null &&
-                                baselineValue > 0)
+                        final extraStr = point?.extra != null
+                            ? '\n${point!.extra}'
+                            : '';
+                        final diffStr =
+                            (baselineValue != null && baselineValue > 0)
                             ? '\n较均值: ${(spot.y - baselineValue).toStringAsFixed(2)} $unit'
                             : '';
                         return LineTooltipItem(
                           '$dateStr\n${spot.y.toStringAsFixed(2)} $unit$diffStr$extraStr',
                           const TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500,
-                              height: 1.3),
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            height: 1.3,
+                          ),
                         );
                       }).toList();
                     },
@@ -1344,9 +1569,11 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                 ),
                 titlesData: FlTitlesData(
                   topTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false)),
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
                   rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false)),
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
@@ -1354,18 +1581,20 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                       getTitlesWidget: (val, meta) {
                         final idx = val.toInt();
                         final count = dataPoints.length;
-                        final step = count <= 5
-                            ? 1
-                            : (count <= 10 ? 2 : (count / 4).floor());
-                        if (idx >= 0 &&
-                            idx < count &&
-                            (idx == 0 || idx == count - 1 || idx % step == 0)) {
+                        if (ChartAxisUtils.shouldShowXLabel(
+                          idx,
+                          count,
+                          trendXStep,
+                        )) {
                           return Padding(
                             padding: const EdgeInsets.only(top: 4),
-                            child: Text(dataPoints[idx].label,
-                                style: TextStyle(
-                                    fontSize: 10,
-                                    color: colors.onSurfaceVariant)),
+                            child: Text(
+                              dataPoints[idx].label,
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: colors.onSurfaceVariant,
+                              ),
+                            ),
                           );
                         }
                         return const SizedBox.shrink();
@@ -1376,14 +1605,16 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                     sideTitles: SideTitles(
                       showTitles: true,
                       interval: yInterval,
-                      reservedSize: 28,
+                      reservedSize: 32,
                       getTitlesWidget: (val, meta) {
                         return Padding(
                           padding: const EdgeInsets.only(right: 4),
                           child: Text(
-                            val.toStringAsFixed(1),
+                            ChartAxisUtils.formatAxisValue(val, yInterval),
                             style: TextStyle(
-                                fontSize: 10, color: colors.onSurfaceVariant),
+                              fontSize: 10,
+                              color: colors.onSurfaceVariant,
+                            ),
                             textAlign: TextAlign.right,
                           ),
                         );
@@ -1419,7 +1650,9 @@ class _StatisticsScreenState extends State<StatisticsScreen>
   }
 
   Widget _buildExpenseStructureCard(
-      BuildContext context, List<ExpenseCategoryShare> shares) {
+    BuildContext context,
+    List<ExpenseCategoryShare> shares,
+  ) {
     if (shares.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -1442,11 +1675,16 @@ class _StatisticsScreenState extends State<StatisticsScreen>
         children: [
           const Row(
             children: [
-              Icon(AppIcons.pie_chart_outline,
-                  color: Color(0xFFFF5A24), size: 18),
+              Icon(
+                AppIcons.pie_chart_outline,
+                color: Color(0xFFFF5A24),
+                size: 18,
+              ),
               SizedBox(width: 6),
-              Text('全车用车成本结构分布',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+              Text(
+                '全车用车成本结构分布',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+              ),
             ],
           ),
           const SizedBox(height: 14),
@@ -1467,9 +1705,10 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                     title: '${s.percentage.toStringAsFixed(0)}%',
                     radius: 42,
                     titleStyle: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white),
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
                   );
                 }).toList(),
               ),
@@ -1488,14 +1727,18 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
-                      width: 8,
-                      height: 8,
-                      decoration:
-                          BoxDecoration(color: color, shape: BoxShape.circle)),
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: color,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
                   const SizedBox(width: 4),
                   Text(
-                      '${s.category}: ¥${s.totalAmount.toStringAsFixed(0)} (${s.percentage}%)',
-                      style: const TextStyle(fontSize: 11)),
+                    '${s.category}: ¥${s.totalAmount.toStringAsFixed(0)} (${s.percentage}%)',
+                    style: const TextStyle(fontSize: 11),
+                  ),
                 ],
               );
             }).toList(),
@@ -1511,22 +1754,29 @@ class _StatisticsScreenState extends State<StatisticsScreen>
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(
-                color: color, borderRadius: BorderRadius.circular(2))),
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
         const SizedBox(width: 4),
         Text(label, style: TextStyle(fontSize: 11, color: textColor)),
       ],
     );
   }
 
-  Widget _buildAnomalyDiagnosticsCard(BuildContext context,
-      List<AnomalyDiagnosticItem> anomalies, int validConsumptionCount) {
+  Widget _buildAnomalyDiagnosticsCard(
+    BuildContext context,
+    List<AnomalyDiagnosticItem> anomalies,
+    int validConsumptionCount,
+  ) {
     final colors = Theme.of(context).colorScheme;
     final isDark = colors.brightness == Brightness.dark;
-    final displayList =
-        _isAnomalyExpanded ? anomalies : anomalies.take(3).toList();
+    final displayList = _isAnomalyExpanded
+        ? anomalies
+        : anomalies.take(3).toList();
 
     return CustomCard(
       margin: EdgeInsets.zero,
@@ -1539,18 +1789,24 @@ class _StatisticsScreenState extends State<StatisticsScreen>
             children: [
               const Row(
                 children: [
-                  Icon(AppIcons.auto_awesome_outlined,
-                      color: Color(0xFFFF5A24), size: 18),
+                  Icon(
+                    AppIcons.auto_awesome_outlined,
+                    color: Color(0xFFFF5A24),
+                    size: 18,
+                  ),
                   SizedBox(width: 6),
-                  Text('能耗波动与异常点智能诊断',
-                      style:
-                          TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                  Text(
+                    '能耗波动与异常点智能诊断',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                  ),
                 ],
               ),
               if (anomalies.isNotEmpty)
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.orange.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(4),
@@ -1558,16 +1814,19 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                   child: Text(
                     '发现 ${anomalies.length} 项特征记录',
                     style: const TextStyle(
-                        fontSize: 10,
-                        color: Colors.orange,
-                        fontWeight: FontWeight.bold),
+                      fontSize: 10,
+                      color: Colors.orange,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
             ],
           ),
           const SizedBox(height: 4),
-          Text('基于 $validConsumptionCount 条有效实测油耗记录计算个人基线，仅在样本达到 5 条后进行诊断',
-              style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant)),
+          Text(
+            '基于 $validConsumptionCount 条有效实测油耗记录计算个人基线，仅在样本达到 5 条后进行诊断',
+            style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
+          ),
           const SizedBox(height: 10),
           if (validConsumptionCount < 5)
             Container(
@@ -1586,13 +1845,19 @@ class _StatisticsScreenState extends State<StatisticsScreen>
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(AppIcons.check_circle_outline,
-                      color: isDark ? Colors.green[300] : Colors.green[700],
-                      size: 18),
+                  Icon(
+                    AppIcons.check_circle_outline,
+                    color: isDark ? Colors.green[300] : Colors.green[700],
+                    size: 18,
+                  ),
                   const SizedBox(width: 6),
-                  Text('全车能耗整体处于平稳受控范围，未检测到异常波动',
-                      style: TextStyle(
-                          color: colors.onSurfaceVariant, fontSize: 12)),
+                  Text(
+                    '全车能耗整体处于平稳受控范围，未检测到异常波动',
+                    style: TextStyle(
+                      color: colors.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
+                  ),
                 ],
               ),
             )
@@ -1606,11 +1871,11 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                       : (isDark ? Colors.green[300]! : Colors.green[700]!);
                   final itemBackground = isHigh
                       ? (isDark
-                          ? const Color(0xFF3A2425)
-                          : const Color(0xFFFFF8F8))
+                            ? const Color(0xFF3A2425)
+                            : const Color(0xFFFFF8F8))
                       : (isDark
-                          ? const Color(0xFF203429)
-                          : const Color(0xFFF6FBF7));
+                            ? const Color(0xFF203429)
+                            : const Color(0xFFF6FBF7));
                   final statusTextColor = isHigh
                       ? (isDark ? Colors.red[100]! : Colors.red[800]!)
                       : (isDark ? Colors.green[100]! : Colors.green[800]!);
@@ -1642,12 +1907,16 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                             Text(
                               DateFormatter.formatYmd(a.date),
                               style: const TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 12),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
                             ),
                             const SizedBox(width: 6),
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 5, vertical: 1.5),
+                                horizontal: 5,
+                                vertical: 1.5,
+                              ),
                               decoration: BoxDecoration(
                                 color: themeColor.withValues(alpha: 0.12),
                                 borderRadius: BorderRadius.circular(4),
@@ -1698,26 +1967,32 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                             Container(
                               margin: const EdgeInsets.only(top: 2),
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 4, vertical: 1),
+                                horizontal: 4,
+                                vertical: 1,
+                              ),
                               decoration: BoxDecoration(
                                 color: colors.surfaceContainerHighest
                                     .withValues(alpha: 0.5),
                                 borderRadius: BorderRadius.circular(3),
                               ),
-                              child: Text('成因',
-                                  style: TextStyle(
-                                      fontSize: 9,
-                                      color: colors.onSurface,
-                                      fontWeight: FontWeight.bold)),
+                              child: Text(
+                                '成因',
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  color: colors.onSurface,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ),
                             const SizedBox(width: 6),
                             Expanded(
                               child: Text(
                                 a.reason,
                                 style: TextStyle(
-                                    fontSize: 11.5,
-                                    color: colors.onSurface,
-                                    height: 1.35),
+                                  fontSize: 11.5,
+                                  color: colors.onSurface,
+                                  height: 1.35,
+                                ),
                               ),
                             ),
                           ],
@@ -1732,7 +2007,9 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                             Container(
                               margin: const EdgeInsets.only(top: 2),
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 4, vertical: 1),
+                                horizontal: 4,
+                                vertical: 1,
+                              ),
                               decoration: BoxDecoration(
                                 color: themeColor.withValues(alpha: 0.12),
                                 borderRadius: BorderRadius.circular(3),
@@ -1751,9 +2028,10 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                               child: Text(
                                 a.suggestion,
                                 style: TextStyle(
-                                    fontSize: 11,
-                                    color: colors.onSurfaceVariant,
-                                    height: 1.35),
+                                  fontSize: 11,
+                                  color: colors.onSurfaceVariant,
+                                  height: 1.35,
+                                ),
                               ),
                             ),
                           ],
@@ -1781,9 +2059,10 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                                 ? '收起诊断列表'
                                 : '展开查看全部 (${anomalies.length}项特征)',
                             style: const TextStyle(
-                                fontSize: 11,
-                                color: Color(0xFFFF5A24),
-                                fontWeight: FontWeight.bold),
+                              fontSize: 11,
+                              color: Color(0xFFFF5A24),
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                           Icon(
                             _isAnomalyExpanded
@@ -1799,6 +2078,120 @@ class _StatisticsScreenState extends State<StatisticsScreen>
               ],
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// 轻量分析结果缓存：按数据源引用（identical）判断是否需要重算。
+/// 过滤后的记录列表在数据/范围不变时是同一实例，因此可作为缓存键。
+class _MemoCache<T> {
+  List<Object?>? _key;
+  T? _value;
+
+  T get(List<Object?> key, T Function() compute) {
+    final last = _key;
+    if (_value != null && last != null && _sameKey(last, key)) {
+      return _value as T;
+    }
+    _value = compute();
+    _key = key;
+    return _value as T;
+  }
+
+  static bool _sameKey(List<Object?> a, List<Object?> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (!identical(a[i], b[i])) return false;
+    }
+    return true;
+  }
+}
+
+/// 回到顶部悬浮按钮：内部自行监听滚动并管理显隐，
+/// 避免滚动阈值切换触发整个统计页 setState 重算所有图表。
+class _BackToTopButton extends StatefulWidget {
+  final ScrollController scrollController;
+
+  const _BackToTopButton({required this.scrollController});
+
+  @override
+  State<_BackToTopButton> createState() => _BackToTopButtonState();
+}
+
+class _BackToTopButtonState extends State<_BackToTopButton> {
+  bool _visible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void didUpdateWidget(_BackToTopButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.scrollController, widget.scrollController)) {
+      oldWidget.scrollController.removeListener(_onScroll);
+      widget.scrollController.addListener(_onScroll);
+    }
+  }
+
+  void _onScroll() {
+    if (!widget.scrollController.hasClients) return;
+    final show = widget.scrollController.offset > 350;
+    if (show != _visible) {
+      setState(() => _visible = show);
+    }
+  }
+
+  void _scrollToTop() {
+    HapticFeedback.lightImpact();
+    if (widget.scrollController.hasClients) {
+      widget.scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.scrollController.removeListener(_onScroll);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      ignoring: !_visible,
+      child: AnimatedScale(
+        scale: _visible ? 1.0 : 0.0,
+        duration: const Duration(milliseconds: 200),
+        child: AnimatedOpacity(
+          opacity: _visible ? 1.0 : 0.0,
+          duration: const Duration(milliseconds: 200),
+          child: Material(
+            elevation: 4,
+            shape: const CircleBorder(),
+            color: Theme.of(context).cardColor,
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: _scrollToTop,
+              child: Container(
+                width: 44,
+                height: 44,
+                alignment: Alignment.center,
+                child: const Icon(
+                  AppIcons.arrow_upward,
+                  size: 20,
+                  color: Color(0xFFFF5A24),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

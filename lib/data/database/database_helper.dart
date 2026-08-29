@@ -8,10 +8,24 @@ import '../models/refuel_record_model.dart';
 import '../models/expense_record_model.dart';
 import '../models/weather_snapshot_model.dart';
 
+/// 批量导入结果统计（含查重信息）
+class BatchImportStats {
+  final int inserted;
+  final int skippedDuplicates;
+
+  const BatchImportStats({
+    required this.inserted,
+    required this.skippedDuplicates,
+  });
+}
+
 /// SQLite 本地数据库核心辅助类与仓储管理
 class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper._internal();
   static Database? _database;
+
+  /// 记忆化初始化 Future，避免并发首访时重复建表/自愈
+  static Future<Database>? _databaseFuture;
 
   factory DatabaseHelper() => _instance;
 
@@ -19,9 +33,17 @@ class DatabaseHelper {
 
   /// 获取数据库实例单例
   Future<Database> get database async {
-    if (_database != null) return _database!;
-    _database = await _initDatabase();
-    return _database!;
+    final existing = _database;
+    if (existing != null) return existing;
+    return _databaseFuture ??= _initDatabase()
+        .then((db) {
+          _database = db;
+          return db;
+        })
+        .catchError((Object e) {
+          _databaseFuture = null; // 失败后允许下次重试
+          throw e;
+        });
   }
 
   /// 初始化数据库连接并建表
@@ -279,10 +301,11 @@ class DatabaseHelper {
         if (vehicle.isDefault) {
           await txn.rawUpdate('UPDATE vehicles SET is_default = 0');
         }
+        // abort 而非 replace：主键冲突时报错而不是级联清空整车记录
         return txn.insert(
           'vehicles',
           vehicle.toMap(),
-          conflictAlgorithm: ConflictAlgorithm.replace,
+          conflictAlgorithm: ConflictAlgorithm.abort,
         );
       });
       AppConfig.log(
@@ -301,7 +324,7 @@ class DatabaseHelper {
           return txn.insert(
             'vehicles',
             vehicle.toMap(),
-            conflictAlgorithm: ConflictAlgorithm.replace,
+            conflictAlgorithm: ConflictAlgorithm.abort,
           );
         });
       } catch (retryError) {
@@ -324,7 +347,7 @@ class DatabaseHelper {
           vehicle.toMap(),
           where: 'id = ?',
           whereArgs: [vehicle.id],
-          conflictAlgorithm: ConflictAlgorithm.replace,
+          conflictAlgorithm: ConflictAlgorithm.abort,
         );
       });
       AppConfig.log('成功更新车辆数据 [${vehicle.name}], count: $count');
@@ -343,7 +366,7 @@ class DatabaseHelper {
             vehicle.toMap(),
             where: 'id = ?',
             whereArgs: [vehicle.id],
-            conflictAlgorithm: ConflictAlgorithm.replace,
+            conflictAlgorithm: ConflictAlgorithm.abort,
           );
         });
       } catch (retryError) {
@@ -450,20 +473,72 @@ class DatabaseHelper {
     }
   }
 
-  /// 批量插入加油记录（用于小熊油耗数据导入）
-  Future<void> batchInsertRefuelRecords(List<RefuelRecordModel> records) async {
+  /// 批量插入加油记录（用于小熊油耗数据导入）。
+  ///
+  /// 自动跳过"同车 + 同一分钟 + 同里程"的重复行（与库内已有记录
+  /// 或本批次内部重复），避免同一文件重复导入把历史翻倍。
+  Future<BatchImportStats> batchInsertRefuelRecords(
+    List<RefuelRecordModel> records,
+  ) async {
     try {
       final db = await database;
-      final batch = db.batch();
-      for (final r in records) {
-        batch.insert('refuel_records', r.toMap());
-      }
-      await batch.commit(noResult: true);
-      AppConfig.log('已批量插入 ${records.length} 条加油记录');
+      final stats = await db.transaction((txn) async {
+        final existingKeys = <String>{};
+        for (final vehicleId in records.map((r) => r.vehicleId).toSet()) {
+          final rows = await txn.query(
+            'refuel_records',
+            columns: ['refuel_date', 'mileage'],
+            where: 'vehicle_id = ?',
+            whereArgs: [vehicleId],
+          );
+          for (final row in rows) {
+            existingKeys.add(
+              _refuelDuplicateKey(
+                row['refuel_date'] as String?,
+                (row['mileage'] as num?)?.toDouble(),
+              ),
+            );
+          }
+        }
+
+        final batch = txn.batch();
+        final seenInBatch = <String>{};
+        var inserted = 0;
+        var skipped = 0;
+        for (final r in records) {
+          final key = _refuelDuplicateKey(
+            r.refuelDate.toIso8601String(),
+            r.mileage,
+          );
+          if (existingKeys.contains(key)) {
+            skipped++;
+          } else if (!seenInBatch.add(key)) {
+            skipped++;
+          } else {
+            batch.insert('refuel_records', r.toMap());
+            inserted++;
+          }
+        }
+        await batch.commit(noResult: true);
+        return BatchImportStats(inserted: inserted, skippedDuplicates: skipped);
+      });
+      AppConfig.log(
+        '批量插入完成：新增 ${stats.inserted} 条，跳过重复 ${stats.skippedDuplicates} 条',
+      );
+      return stats;
     } catch (e) {
       AppConfig.log('批量插入加油记录失败: $e');
       rethrow;
     }
+  }
+
+  /// 重复记录判别指纹：车辆由查询条件保证，此处按分钟精度的日期 + 里程
+  static String _refuelDuplicateKey(String? isoDate, double? mileage) {
+    final datePart = (isoDate != null && isoDate.length >= 16)
+        ? isoDate.substring(0, 16)
+        : (isoDate ?? '');
+    final mileagePart = mileage == null ? '' : mileage.toStringAsFixed(1);
+    return '$datePart|$mileagePart';
   }
 
   /// 在一个事务中覆盖指定车辆的加油记录，失败时保留原数据。
@@ -670,19 +745,24 @@ class DatabaseHelper {
   /// 导出全库数据为标准化 JSON 备份字典
   Future<Map<String, dynamic>> exportFullBackupData() async {
     final db = await database;
-    final vehicles = await db.query('vehicles');
-    final refuels = await db.query('refuel_records');
-    final expenses = await db.query('expense_records');
-    final weatherSnapshots = await db.query('weather_snapshots');
+    // 单事务快照读取：保证四张表数据相互一致，
+    // 否则并发写入可能产生"加油记录引用了不存在车辆"的备份文件（还原时会被拒绝）
+    final rows = await db.transaction((txn) async {
+      final vehicles = await txn.query('vehicles');
+      final refuels = await txn.query('refuel_records');
+      final expenses = await txn.query('expense_records');
+      final weatherSnapshots = await txn.query('weather_snapshots');
+      return [vehicles, refuels, expenses, weatherSnapshots];
+    });
 
     return {
       'app': 'BearFuel',
       'version': AppConfig.versionName,
       'export_time': DateTime.now().toIso8601String(),
-      'vehicles': vehicles,
-      'refuel_records': refuels,
-      'expense_records': expenses,
-      'weather_snapshots': weatherSnapshots,
+      'vehicles': rows[0],
+      'refuel_records': rows[1],
+      'expense_records': rows[2],
+      'weather_snapshots': rows[3],
     };
   }
 
@@ -797,7 +877,8 @@ class DatabaseHelper {
 
     // Validate before opening the replacement transaction. An empty or
     // malformed backup must never be allowed to clear the local database.
-    final isValid = backupData['app'] == 'BearFuel' &&
+    final isValid =
+        backupData['app'] == 'BearFuel' &&
         validRows(backupData['vehicles'], validVehicle, allowEmpty: false) &&
         validRows(backupData['refuel_records'], validRefuel) &&
         (!backupData.containsKey('expense_records') ||
@@ -853,7 +934,7 @@ class DatabaseHelper {
             {'is_default': 1},
             where: 'id = ?',
             whereArgs: [
-              defaults.isNotEmpty ? defaults.first['id'] : vehicles.first['id']
+              defaults.isNotEmpty ? defaults.first['id'] : vehicles.first['id'],
             ],
           );
         }

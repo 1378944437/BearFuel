@@ -45,7 +45,7 @@ android {
     defaultConfig {
         applicationId = "com.bearfuel.app"
         minSdk = flutter.minSdkVersion
-        targetSdk = 34
+        targetSdk = 35
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         manifestPlaceholders["applicationName"] = "android.app.Application"
@@ -59,8 +59,8 @@ android {
     }
 
     lint {
-        checkReleaseBuilds = false
-        abortOnError = false
+        checkReleaseBuilds = true
+        abortOnError = true
     }
 
     signingConfigs {

@@ -18,11 +18,7 @@ void main() {
     final result = await DatabaseHelper().restoreFullBackupData({
       'app': 'BearFuel',
       'vehicles': [
-        {
-          'id': 'car-1',
-          'name': 123,
-          'created_at': '2026-08-28T00:00:00.000',
-        },
+        {'id': 'car-1', 'name': 123, 'created_at': '2026-08-28T00:00:00.000'},
       ],
       'refuel_records': [],
     });

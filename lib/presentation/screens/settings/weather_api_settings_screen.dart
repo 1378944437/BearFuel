@@ -40,9 +40,11 @@ class _WeatherApiSettingsScreenState extends State<WeatherApiSettingsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(_keyController.text.trim().isEmpty
-              ? '已清除天气 API Key'
-              : '天气 API Key 已保存'),
+          content: Text(
+            _keyController.text.trim().isEmpty
+                ? '已清除天气 API Key'
+                : '天气 API Key 已保存',
+          ),
         ),
       );
       setState(() {});
@@ -80,9 +82,9 @@ class _WeatherApiSettingsScreenState extends State<WeatherApiSettingsScreen> {
   Future<void> _openWebPage(String url) async {
     final opened = await ExternalUrlLauncher.open(url);
     if (!opened && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('无法打开网页，请检查浏览器是否可用')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('无法打开网页，请检查浏览器是否可用')));
     }
   }
 
@@ -92,8 +94,10 @@ class _WeatherApiSettingsScreenState extends State<WeatherApiSettingsScreen> {
       contentPadding: EdgeInsets.zero,
       leading: const Icon(AppIcons.open_in_new, color: Color(0xFF1E88E5)),
       title: Text(title),
-      subtitle: Text(subtitle,
-          style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant)),
+      subtitle: Text(
+        subtitle,
+        style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
+      ),
       trailing: const Icon(AppIcons.chevron_right, size: 18),
       onTap: () => _openWebPage(url),
     );
@@ -118,9 +122,11 @@ class _WeatherApiSettingsScreenState extends State<WeatherApiSettingsScreen> {
               prefixIcon: const Icon(AppIcons.key_outlined),
               suffixIcon: IconButton(
                 tooltip: _obscureKey ? '显示 Key' : '隐藏 Key',
-                icon: Icon(_obscureKey
-                    ? AppIcons.visibility_outlined
-                    : AppIcons.visibility_off_outlined),
+                icon: Icon(
+                  _obscureKey
+                      ? AppIcons.visibility_outlined
+                      : AppIcons.visibility_off_outlined,
+                ),
                 onPressed: () => setState(() => _obscureKey = !_obscureKey),
               ),
             ),
@@ -137,9 +143,9 @@ class _WeatherApiSettingsScreenState extends State<WeatherApiSettingsScreen> {
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(isConfigured
-                    ? '已配置，将使用墨迹天气实时和历史数据'
-                    : '未配置 Key，将尝试墨迹天气匿名查询'),
+                child: Text(
+                  isConfigured ? '已配置，将使用墨迹天气实时和历史数据' : '未配置 Key，将尝试墨迹天气匿名查询',
+                ),
               ),
             ],
           ),
@@ -156,14 +162,16 @@ class _WeatherApiSettingsScreenState extends State<WeatherApiSettingsScreen> {
                 ? const SizedBox(
                     width: 18,
                     height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2))
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : const Icon(AppIcons.network_check_outlined),
             label: const Text('测试连接（北京）'),
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
-            onPressed:
-                _isSaving || _isTesting || !isConfigured ? null : _clearKey,
+            onPressed: _isSaving || _isTesting || !isConfigured
+                ? null
+                : _clearKey,
             icon: const Icon(AppIcons.delete_outline),
             label: const Text('清除本机 Key'),
           ),
@@ -171,32 +179,54 @@ class _WeatherApiSettingsScreenState extends State<WeatherApiSettingsScreen> {
           Text(
             '接口地址和请求参数已按 ApiZero 墨迹天气协议固定。Key 为可选项，未配置时使用匿名请求；如配置 Key，仅保存于本机安全存储。历史天气快照按城市和日期保存在本机。',
             style: TextStyle(
-                fontSize: 12, color: colors.onSurfaceVariant, height: 1.45),
+              fontSize: 12,
+              color: colors.onSurfaceVariant,
+              height: 1.45,
+            ),
           ),
           const SizedBox(height: 24),
           const Divider(),
           const SizedBox(height: 16),
-          const Text('详细配置教程',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const Text(
+            '详细配置教程',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 14),
-          const Text('1. ApiZero 墨迹天气接口支持匿名调用，个人使用可直接测试。',
-              style: TextStyle(height: 1.5)),
+          const Text(
+            '1. ApiZero 墨迹天气接口支持匿名调用，个人使用可直接测试。',
+            style: TextStyle(height: 1.5),
+          ),
           const SizedBox(height: 10),
-          const Text('2. 如匿名额度不足，申请个人 Key 后粘贴到上方保存。',
-              style: TextStyle(height: 1.5)),
+          const Text(
+            '2. 如匿名额度不足，申请个人 Key 后粘贴到上方保存。',
+            style: TextStyle(height: 1.5),
+          ),
           const SizedBox(height: 10),
-          const Text('3. 测试成功后，环境行情会按当前城市读取实时天气，并保存可用的历史快照。',
-              style: TextStyle(height: 1.5)),
+          const Text(
+            '3. 测试成功后，环境行情会按当前城市读取实时天气，并保存可用的历史快照。',
+            style: TextStyle(height: 1.5),
+          ),
           const SizedBox(height: 16),
-          const Text('相关网页',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const Text(
+            '相关网页',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 6),
-          _buildLink('ApiZero 墨迹天气接口文档', '查看实况、历史天气和返回字段',
-              'https://apizero.cn/aidocs/moji-weather/raw.md'),
-          _buildLink('ApiZero 墨迹天气说明页', '查看接口额度、状态和在线调试',
-              'https://apizero.cn/aidocs/moji-weather'),
-          _buildLink('ApiZero Key 管理', '申请或管理个人 API Key',
-              'https://apizero.cn/account/keys'),
+          _buildLink(
+            'ApiZero 墨迹天气接口文档',
+            '查看实况、历史天气和返回字段',
+            'https://apizero.cn/aidocs/moji-weather/raw.md',
+          ),
+          _buildLink(
+            'ApiZero 墨迹天气说明页',
+            '查看接口额度、状态和在线调试',
+            'https://apizero.cn/aidocs/moji-weather',
+          ),
+          _buildLink(
+            'ApiZero Key 管理',
+            '申请或管理个人 API Key',
+            'https://apizero.cn/account/keys',
+          ),
         ],
       ),
     );

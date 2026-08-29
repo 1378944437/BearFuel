@@ -43,9 +43,11 @@ class _FuelPriceApiSettingsScreenState
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(_keyController.text.trim().isEmpty
-              ? '已清除 ApiZero Key'
-              : 'ApiZero Key 已保存'),
+          content: Text(
+            _keyController.text.trim().isEmpty
+                ? '已清除 ApiZero Key'
+                : 'ApiZero Key 已保存',
+          ),
         ),
       );
       setState(() {});
@@ -84,9 +86,9 @@ class _FuelPriceApiSettingsScreenState
   Future<void> _openWebPage(String url) async {
     final opened = await ExternalUrlLauncher.open(url);
     if (!opened && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('无法打开网页，请检查浏览器是否可用')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('无法打开网页，请检查浏览器是否可用')));
     }
   }
 
@@ -104,25 +106,33 @@ class _FuelPriceApiSettingsScreenState
           CircleAvatar(
             radius: 13,
             backgroundColor: const Color(0xFF1E88E5),
-            child: Text('$number',
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold)),
+            child: Text(
+              '$number',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title,
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
                 const SizedBox(height: 4),
-                Text(description,
-                    style: TextStyle(
-                        fontSize: 12,
-                        color: colors.onSurfaceVariant,
-                        height: 1.45)),
+                Text(
+                  description,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colors.onSurfaceVariant,
+                    height: 1.45,
+                  ),
+                ),
               ],
             ),
           ),
@@ -142,8 +152,10 @@ class _FuelPriceApiSettingsScreenState
       contentPadding: EdgeInsets.zero,
       leading: Icon(icon, color: const Color(0xFF1E88E5)),
       title: Text(title),
-      subtitle: Text(subtitle,
-          style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant)),
+      subtitle: Text(
+        subtitle,
+        style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
+      ),
       trailing: const Icon(AppIcons.chevron_right, size: 18),
       onTap: () => _openWebPage(url),
     );
@@ -168,9 +180,11 @@ class _FuelPriceApiSettingsScreenState
               prefixIcon: const Icon(AppIcons.key_outlined),
               suffixIcon: IconButton(
                 tooltip: _obscureKey ? '显示 Key' : '隐藏 Key',
-                icon: Icon(_obscureKey
-                    ? AppIcons.visibility_outlined
-                    : AppIcons.visibility_off_outlined),
+                icon: Icon(
+                  _obscureKey
+                      ? AppIcons.visibility_outlined
+                      : AppIcons.visibility_off_outlined,
+                ),
                 onPressed: () => setState(() => _obscureKey = !_obscureKey),
               ),
             ),
@@ -206,7 +220,8 @@ class _FuelPriceApiSettingsScreenState
                 ? const SizedBox(
                     width: 18,
                     height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2))
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : const Icon(AppIcons.save_outlined),
             label: const Text('保存 Key'),
           ),
@@ -217,14 +232,16 @@ class _FuelPriceApiSettingsScreenState
                 ? const SizedBox(
                     width: 18,
                     height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2))
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : const Icon(AppIcons.network_check_outlined),
             label: const Text('测试连接（北京）'),
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
-            onPressed:
-                _isSaving || _isTesting || !isConfigured ? null : _clearKey,
+            onPressed: _isSaving || _isTesting || !isConfigured
+                ? null
+                : _clearKey,
             icon: const Icon(AppIcons.delete_outline),
             label: const Text('清除本机 Key'),
           ),
@@ -232,13 +249,18 @@ class _FuelPriceApiSettingsScreenState
           Text(
             '当前油价使用 ApiZero oil-price，调价预测、国际原油和调价日历使用 oil-price-forecast。接口地址和请求参数按官方协议固定。Key 为可选项，未配置时使用匿名请求；如配置 Key，仅保存于本机安全存储，不会写入源码或编译包。自动查询间隔 30 分钟，手动更新至少间隔 1 分钟。',
             style: TextStyle(
-                fontSize: 12, color: colors.onSurfaceVariant, height: 1.45),
+              fontSize: 12,
+              color: colors.onSurfaceVariant,
+              height: 1.45,
+            ),
           ),
           const SizedBox(height: 24),
           const Divider(),
           const SizedBox(height: 16),
-          const Text('详细配置教程',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const Text(
+            '详细配置教程',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 14),
           _buildGuideStep(
             number: 1,
@@ -262,8 +284,10 @@ class _FuelPriceApiSettingsScreenState
             description: '回到实时油价页面点击刷新。若失败，页面会显示 HTTP 状态、业务码或具体返回字段错误。',
           ),
           const SizedBox(height: 8),
-          const Text('相关网页',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const Text(
+            '相关网页',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 6),
           _buildWebLink(
             icon: AppIcons.menu_book_outlined,

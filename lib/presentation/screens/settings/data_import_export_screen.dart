@@ -141,11 +141,13 @@ class _DataImportExportScreenState extends State<DataImportExportScreen>
       return value is List && value.every((item) => item is Map);
     }
 
-    final hasVehicles = backupMap['vehicles'] is List &&
+    final hasVehicles =
+        backupMap['vehicles'] is List &&
         (backupMap['vehicles'] as List).isNotEmpty;
     final requiredKeys = ['vehicles', 'refuel_records'];
     final optionalKeys = ['expense_records', 'weather_snapshots'];
-    final hasInvalidData = backupMap['app'] != 'BearFuel' ||
+    final hasInvalidData =
+        backupMap['app'] != 'BearFuel' ||
         !hasVehicles ||
         [
           ...requiredKeys,
@@ -227,19 +229,53 @@ class _DataImportExportScreenState extends State<DataImportExportScreen>
     if (_previewResult == null || !_previewResult!.success) return;
 
     final refuelProv = context.read<RefuelProvider>();
+
+    // 覆盖导入会清空当前车辆全部加油记录，必须二次确认
+    if (_overwriteExisting) {
+      final existingCount = refuelProv.records.length;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('确认覆盖导入'),
+          content: Text(
+            '开启"覆盖导入"后将清空当前爱车现有的 $existingCount 笔加油记录，'
+            '再用文件中的 ${_previewResult!.validCount} 条数据替换。\n\n此操作不可撤销，确定继续吗？',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('确认覆盖'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+      if (!mounted) return;
+    }
+
     setState(() => _isImporting = true);
 
     try {
-      final success = await refuelProv.importBearFuelRecords(
+      final stats = await refuelProv.importBearFuelRecords(
         _previewResult!.parsedRecords,
         overwrite: _overwriteExisting,
       );
 
       if (mounted) {
-        if (success) {
+        if (stats != null) {
+          final duplicateHint = stats.skippedDuplicates > 0
+              ? '，自动跳过 ${stats.skippedDuplicates} 笔重复记录'
+              : '';
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('成功导入 ${_previewResult!.validCount} 笔加油数据，已生成油耗走势'),
+              content: Text(
+                '成功导入 ${stats.inserted} 笔加油数据$duplicateHint，已生成油耗走势',
+              ),
               backgroundColor: Colors.green,
             ),
           );
@@ -463,8 +499,9 @@ class _DataImportExportScreenState extends State<DataImportExportScreen>
                   : const Color(0xFFFFEBEE),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color:
-                    _previewResult!.success ? Colors.green : Colors.redAccent,
+                color: _previewResult!.success
+                    ? Colors.green
+                    : Colors.redAccent,
               ),
             ),
             child: Column(
@@ -476,8 +513,9 @@ class _DataImportExportScreenState extends State<DataImportExportScreen>
                       _previewResult!.success
                           ? AppIcons.check_circle
                           : AppIcons.error,
-                      color:
-                          _previewResult!.success ? Colors.green : Colors.red,
+                      color: _previewResult!.success
+                          ? Colors.green
+                          : Colors.red,
                       size: 20,
                     ),
                     const SizedBox(width: 8),
@@ -528,7 +566,8 @@ class _DataImportExportScreenState extends State<DataImportExportScreen>
 
         // 确认导入大按钮
         ElevatedButton(
-          onPressed: (_isImporting ||
+          onPressed:
+              (_isImporting ||
                   _previewResult == null ||
                   !_previewResult!.success)
               ? null

@@ -64,25 +64,26 @@ class ApiZeroOilForecast {
   }
 
   Map<String, dynamic> toJson() => {
-        'nextAdjustmentDate': nextAdjustmentDate?.toIso8601String(),
-        'daysRemaining': daysRemaining,
-        'direction': direction,
-        'estimatedChangePerTon': estimatedChangePerTon,
-        'estimatedChangePerLiter': estimatedChangePerLiter,
-        'analysis': analysis,
-        'wti': wti,
-        'brent': brent,
-        'wtiChange': wtiChange,
-        'brentChange': brentChange,
-      };
+    'nextAdjustmentDate': nextAdjustmentDate?.toIso8601String(),
+    'daysRemaining': daysRemaining,
+    'direction': direction,
+    'estimatedChangePerTon': estimatedChangePerTon,
+    'estimatedChangePerLiter': estimatedChangePerLiter,
+    'analysis': analysis,
+    'wti': wti,
+    'brent': brent,
+    'wtiChange': wtiChange,
+    'brentChange': brentChange,
+  };
 
   static ApiZeroOilForecast? fromJson(Map<String, dynamic> json) {
     final dateText = json['nextAdjustmentDate'];
     final direction = json['direction'];
     if (direction is! String || direction.isEmpty) return null;
     return ApiZeroOilForecast(
-      nextAdjustmentDate:
-          dateText is String ? DateTime.tryParse(dateText) : null,
+      nextAdjustmentDate: dateText is String
+          ? DateTime.tryParse(dateText)
+          : null,
       daysRemaining: _parseInt(json['daysRemaining']) ?? 0,
       direction: direction,
       estimatedChangePerTon: _parseNumber(json['estimatedChangePerTon']),
@@ -117,13 +118,13 @@ class ApiZeroAdjustmentScheduleItem {
   bool get isStagnant => status.contains('搁浅');
 
   Map<String, dynamic> toJson() => {
-        'date': date.toIso8601String(),
-        'effective': effective,
-        'status': status,
-        'summary': summary,
-        'gasolineYuanPerTon': gasolineYuanPerTon,
-        'dieselYuanPerTon': dieselYuanPerTon,
-      };
+    'date': date.toIso8601String(),
+    'effective': effective,
+    'status': status,
+    'summary': summary,
+    'gasolineYuanPerTon': gasolineYuanPerTon,
+    'dieselYuanPerTon': dieselYuanPerTon,
+  };
 
   static ApiZeroAdjustmentScheduleItem? fromJson(Map<String, dynamic> json) {
     final date = DateTime.tryParse('${json['date'] ?? ''}');
@@ -152,10 +153,10 @@ class ApiZeroOilForecastResponse {
   });
 
   Map<String, dynamic> toJson() => {
-        'forecast': forecast?.toJson(),
-        'schedule': schedule.map((item) => item.toJson()).toList(),
-        'fetchedAt': fetchedAt.millisecondsSinceEpoch,
-      };
+    'forecast': forecast?.toJson(),
+    'schedule': schedule.map((item) => item.toJson()).toList(),
+    'fetchedAt': fetchedAt.millisecondsSinceEpoch,
+  };
 
   static ApiZeroOilForecastResponse? fromJson(Map<String, dynamic> json) {
     final rawSchedule = json['schedule'];
@@ -163,8 +164,11 @@ class ApiZeroOilForecastResponse {
     if (rawSchedule is! List || fetchedAt is! num) return null;
     final schedule = rawSchedule
         .whereType<Map>()
-        .map((item) => ApiZeroAdjustmentScheduleItem.fromJson(
-            Map<String, dynamic>.from(item)))
+        .map(
+          (item) => ApiZeroAdjustmentScheduleItem.fromJson(
+            Map<String, dynamic>.from(item),
+          ),
+        )
         .whereType<ApiZeroAdjustmentScheduleItem>()
         .toList();
     final rawForecast = json['forecast'];
@@ -241,8 +245,9 @@ class ApiZeroOilForecastService {
     final attemptKey = '$cacheKey:last_attempt_$action';
     final manualKey = '$cacheKey:last_manual_attempt_$action';
     final lastAttempt = prefs.getInt(force ? manualKey : attemptKey);
-    final interval =
-        force ? minimumManualRequestInterval : minimumRequestInterval;
+    final interval = force
+        ? minimumManualRequestInterval
+        : minimumRequestInterval;
     if (lastAttempt != null) {
       final elapsed = DateTime.now().difference(
         DateTime.fromMillisecondsSinceEpoch(lastAttempt),
@@ -256,24 +261,33 @@ class ApiZeroOilForecastService {
   }
 
   static Future<Map<String, dynamic>?> _request(
-      Map<String, String> query) async {
+    Map<String, String> query,
+  ) async {
     HttpClient? client;
     try {
       await FuelPriceApiConfigStore.waitForRequestSlot();
-      final uri = Uri.parse(FuelPriceApiConfigStore.forecastEndpoint)
-          .replace(queryParameters: query);
+      final uri = Uri.parse(
+        FuelPriceApiConfigStore.forecastEndpoint,
+      ).replace(queryParameters: query);
       client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
       final request = await client.getUrl(uri);
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      request.headers.set(HttpHeaders.userAgentHeader,
-          'BearFuel/${AppConfig.versionName} (personal use)');
+      request.headers.set(
+        HttpHeaders.userAgentHeader,
+        'BearFuel/${AppConfig.versionName} (personal use)',
+      );
       final key = FuelPriceApiConfigStore.apiKey;
       if (key.isNotEmpty) {
         request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $key');
       }
-      final response =
-          await request.close().timeout(const Duration(seconds: 10));
-      final body = await response.transform(utf8.decoder).join();
+      final response = await request.close().timeout(
+        const Duration(seconds: 10),
+      );
+      // 响应体读取加超时，防止服务器中途停摆导致永久悬挂
+      final body = await response
+          .transform(utf8.decoder)
+          .join()
+          .timeout(const Duration(seconds: 10));
       final decoded = jsonDecode(body);
       if (decoded is! Map<String, dynamic> || response.statusCode != 200) {
         _lastErrorMessage = response.statusCode == HttpStatus.tooManyRequests
@@ -301,13 +315,15 @@ class ApiZeroOilForecastService {
     if (prediction is! Map) return null;
     final crude = data['crude_oil'];
     return ApiZeroOilForecast(
-      nextAdjustmentDate:
-          DateTime.tryParse('${data['next_adjust_date'] ?? ''}'),
+      nextAdjustmentDate: DateTime.tryParse(
+        '${data['next_adjust_date'] ?? ''}',
+      ),
       daysRemaining: _int(data['days_remaining']) ?? 0,
       direction: '${prediction['direction'] ?? ''}',
       estimatedChangePerTon: _number(prediction['estimated_change_per_ton']),
-      estimatedChangePerLiter:
-          _number(prediction['estimated_change_per_liter']),
+      estimatedChangePerLiter: _number(
+        prediction['estimated_change_per_liter'],
+      ),
       analysis: prediction['analysis'] is String
           ? prediction['analysis'] as String
           : null,
@@ -319,7 +335,8 @@ class ApiZeroOilForecastService {
   }
 
   static List<ApiZeroAdjustmentScheduleItem> _parseSchedule(
-      Map<String, dynamic> data) {
+    Map<String, dynamic> data,
+  ) {
     final raw = data['schedule'];
     if (raw is! List) return [];
     return raw

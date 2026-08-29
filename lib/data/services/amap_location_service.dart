@@ -139,14 +139,15 @@ class AmapLocationService {
       district: district,
       township: township,
       street: street,
-      fullAddress: _stringValue(regeo['formatted_address']) ??
+      fullAddress:
+          _stringValue(regeo['formatted_address']) ??
           [
             province,
             city,
             district,
             township,
             street,
-            _stringValue(streetInfo?['number'])
+            _stringValue(streetInfo?['number']),
           ].whereType<String>().where((part) => part.isNotEmpty).join(),
     );
   }
@@ -181,8 +182,9 @@ class AmapLocationService {
       final point = _parseCoordinate(raw['location']);
       if (point == null) continue;
       final wgs = _gcj02ToWgs84(point.latitude, point.longitude);
-      final distanceMeters =
-          double.tryParse(_stringValue(raw['distance']) ?? '');
+      final distanceMeters = double.tryParse(
+        _stringValue(raw['distance']) ?? '',
+      );
       final address = _stringValue(raw['address']) ?? '地址暂无';
       result.add(
         AmapPoi(
@@ -211,10 +213,15 @@ class AmapLocationService {
       final uri = Uri.https('restapi.amap.com', path, parameters);
       final request = await client.getUrl(uri);
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      final response =
-          await request.close().timeout(const Duration(seconds: 5));
+      final response = await request.close().timeout(
+        const Duration(seconds: 5),
+      );
       if (response.statusCode != HttpStatus.ok) return null;
-      final body = await response.transform(utf8.decoder).join();
+      // 响应体读取加超时，防止服务器中途停摆导致永久悬挂
+      final body = await response
+          .transform(utf8.decoder)
+          .join()
+          .timeout(const Duration(seconds: 5));
       final decoded = jsonDecode(body);
       return decoded is Map<String, dynamic> ? decoded : null;
     } catch (_) {
@@ -269,17 +276,23 @@ class AmapLocationService {
   }
 
   static double _distanceKm(
-      double lat1, double lon1, double lat2, double lon2) {
+    double lat1,
+    double lon1,
+    double lat2,
+    double lon2,
+  ) {
     const radius = 6371.0;
     final dLat = (lat2 - lat1) * pi / 180;
     final dLon = (lon2 - lon1) * pi / 180;
-    final a = sin(dLat / 2) * sin(dLat / 2) +
+    final a =
+        sin(dLat / 2) * sin(dLat / 2) +
         cos(lat1 * pi / 180) *
             cos(lat2 * pi / 180) *
             sin(dLon / 2) *
             sin(dLon / 2);
     return double.parse(
-        (radius * 2 * atan2(sqrt(a), sqrt(1 - a))).toStringAsFixed(2));
+      (radius * 2 * atan2(sqrt(a), sqrt(1 - a))).toStringAsFixed(2),
+    );
   }
 
   static AmapCoordinate _wgs84ToGcj02(double latitude, double longitude) {
@@ -293,7 +306,8 @@ class AmapLocationService {
     magic = 1 - _eccentricity * magic * magic;
     final sqrtMagic = sqrt(magic);
     return AmapCoordinate(
-      latitude: latitude +
+      latitude:
+          latitude +
           (dLat * 180.0) /
               ((_axis * (1 - _eccentricity)) / (magic * sqrtMagic) * pi),
       longitude:
@@ -324,7 +338,8 @@ class AmapLocationService {
   }
 
   static double _transformLatitude(double x, double y) {
-    var ret = -100.0 +
+    var ret =
+        -100.0 +
         2.0 * x +
         3.0 * y +
         0.2 * y * y +

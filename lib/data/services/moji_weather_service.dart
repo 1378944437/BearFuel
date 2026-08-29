@@ -10,21 +10,14 @@ class MojiWeatherCity {
   final String name;
   final String? province;
 
-  const MojiWeatherCity({
-    required this.id,
-    required this.name,
-    this.province,
-  });
+  const MojiWeatherCity({required this.id, required this.name, this.province});
 }
 
 class MojiWeatherTestResult {
   final bool success;
   final String message;
 
-  const MojiWeatherTestResult({
-    required this.success,
-    required this.message,
-  });
+  const MojiWeatherTestResult({required this.success, required this.message});
 }
 
 class MojiWeatherService {
@@ -135,10 +128,7 @@ class MojiWeatherService {
     String? cityId,
     String? apiKey,
   }) async {
-    final query = <String, String>{
-      'op': 'history',
-      'month': month,
-    };
+    final query = <String, String>{'op': 'history', 'month': month};
     if (cityId != null && cityId.isNotEmpty) {
       query['id'] = cityId;
     } else if (city != null && city.trim().isNotEmpty) {
@@ -190,16 +180,25 @@ class MojiWeatherService {
       client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
       final request = await client.getUrl(uri);
       request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      request.headers.set(HttpHeaders.userAgentHeader,
-          'BearFuel/${AppConfig.versionName} (personal use)');
+      request.headers.set(
+        HttpHeaders.userAgentHeader,
+        'BearFuel/${AppConfig.versionName} (personal use)',
+      );
       final effectiveKey = apiKey ?? WeatherApiConfigStore.apiKey;
       if (effectiveKey.isNotEmpty) {
-        request.headers
-            .set(HttpHeaders.authorizationHeader, 'Bearer $effectiveKey');
+        request.headers.set(
+          HttpHeaders.authorizationHeader,
+          'Bearer $effectiveKey',
+        );
       }
-      final response =
-          await request.close().timeout(const Duration(seconds: 10));
-      final body = await response.transform(utf8.decoder).join();
+      final response = await request.close().timeout(
+        const Duration(seconds: 10),
+      );
+      // 响应体读取加超时，防止服务器中途停摆导致永久悬挂
+      final body = await response
+          .transform(utf8.decoder)
+          .join()
+          .timeout(const Duration(seconds: 10));
       final decoded = jsonDecode(body);
       if (decoded is! Map<String, dynamic>) {
         _lastErrorMessage = '接口返回的 JSON 结构无效';

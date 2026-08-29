@@ -47,7 +47,8 @@ class DashboardScreen extends StatelessWidget {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                    builder: (_) => const ServiceSettingsScreen()),
+                  builder: (_) => const ServiceSettingsScreen(),
+                ),
               );
             },
           ),
@@ -57,8 +58,10 @@ class DashboardScreen extends StatelessWidget {
         onRefresh: () async {
           if (vehicle != null) {
             await refuelProv.loadRecords(vehicle.id);
-            await expenseProv.loadExpenses(vehicle.id,
-                currentMaxMileage: refuelProv.latestMileage);
+            await expenseProv.loadExpenses(
+              vehicle.id,
+              currentMaxMileage: refuelProv.latestMileage,
+            );
           }
         },
         child: ListView(
@@ -66,7 +69,11 @@ class DashboardScreen extends StatelessWidget {
           children: [
             // 1. 顶部小熊油耗微质感渐变仪表盘
             _buildMainDashboardCard(
-                context, vehicle, summary, refuelProv.latestMileage),
+              context,
+              vehicle,
+              summary,
+              refuelProv.latestMileage,
+            ),
 
             // 2. 全国实时油价快报与调价倒计时横幅（实时滚动跑马灯，展示完整各标号与调价信息）
             _buildFuelPriceQuickBanner(context),
@@ -91,8 +98,9 @@ class DashboardScreen extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final price = fuelProv.currentPrice;
     final forecast = fuelProv.forecast;
-    final nextDateStr =
-        DateFormatter.formatChineseYmd(forecast.nextAdjustmentDate);
+    final nextDateStr = DateFormatter.formatChineseYmd(
+      forecast.nextAdjustmentDate,
+    );
     final isStagnant = forecast.direction.contains('搁浅');
     final trendStr = isStagnant ? '搁浅' : (forecast.isIncrease ? '上涨' : '下调');
     final displayDelta = forecast.forecastDelta.abs();
@@ -127,7 +135,8 @@ class DashboardScreen extends StatelessWidget {
             Navigator.push(
               context,
               MaterialPageRoute(
-                  builder: (_) => const NationalFuelPriceScreen()),
+                builder: (_) => const NationalFuelPriceScreen(),
+              ),
             );
           },
           child: Padding(
@@ -142,24 +151,31 @@ class DashboardScreen extends StatelessWidget {
                     color: colors.primary.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(6),
                   ),
-                  child: Icon(AppIcons.local_gas_station,
-                      color: colors.primary, size: 16),
+                  child: Icon(
+                    AppIcons.local_gas_station,
+                    color: colors.primary,
+                    size: 16,
+                  ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: _DashboardMarqueeText(
                     text: fullTickerText,
                     style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: isDark
-                            ? colors.onSurface
-                            : const Color(0xFF303638)),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: isDark
+                          ? colors.onSurface
+                          : const Color(0xFF303638),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 6),
-                Icon(AppIcons.arrow_forward_ios,
-                    size: 14, color: colors.onSurfaceVariant),
+                Icon(
+                  AppIcons.arrow_forward_ios,
+                  size: 14,
+                  color: colors.onSurfaceVariant,
+                ),
               ],
             ),
           ),
@@ -169,8 +185,12 @@ class DashboardScreen extends StatelessWidget {
   }
 
   /// 经典大字微质感渐变仪表盘卡片（增加油耗表现等级徽章与当前表显快捷校准）
-  Widget _buildMainDashboardCard(BuildContext context, VehicleModel? vehicle,
-      dynamic summary, double latestMileage) {
+  Widget _buildMainDashboardCard(
+    BuildContext context,
+    VehicleModel? vehicle,
+    dynamic summary,
+    double latestMileage,
+  ) {
     final hasData = summary.validCalculatedCount > 0;
     final avg = summary.averageConsumption as double;
 
@@ -217,35 +237,42 @@ class DashboardScreen extends StatelessWidget {
                     const Text(
                       '综合平均油耗',
                       style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500),
+                        color: Colors.white70,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                     if (hasData) ...[
                       const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: levelColor.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(4),
                           border: Border.all(
-                              color: levelColor.withValues(alpha: 0.3)),
+                            color: levelColor.withValues(alpha: 0.3),
+                          ),
                         ),
                         child: Text(
                           levelText,
                           style: TextStyle(
-                              color: levelColor,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold),
+                            color: levelColor,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ],
                   ],
                 ),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFF212728),
                     borderRadius: BorderRadius.circular(6),
@@ -278,9 +305,10 @@ class DashboardScreen extends StatelessWidget {
                 const Text(
                   'L / 100km',
                   style: TextStyle(
-                      color: Colors.white60,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w500),
+                    color: Colors.white60,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ],
             ),
@@ -307,19 +335,24 @@ class DashboardScreen extends StatelessWidget {
                 InkWell(
                   onTap: vehicle != null
                       ? () => _showQuickUpdateMileageDialog(
-                          context, vehicle, latestMileage)
+                          context,
+                          vehicle,
+                          latestMileage,
+                        )
                       : null,
                   borderRadius: BorderRadius.circular(6),
                   child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 2,
+                    ),
                     child: _buildSubMetric(
                       '当前表显',
                       latestMileage > 0
                           ? '${latestMileage.toStringAsFixed(0)} km'
                           : (vehicle != null
-                              ? '${vehicle.initialMileage.toStringAsFixed(0)} km'
-                              : '--'),
+                                ? '${vehicle.initialMileage.toStringAsFixed(0)} km'
+                                : '--'),
                       const Color(0xFFFFC46B),
                     ),
                   ),
@@ -334,7 +367,10 @@ class DashboardScreen extends StatelessWidget {
 
   /// 快捷校准爱车当前表显总里程弹窗
   void _showQuickUpdateMileageDialog(
-      BuildContext context, VehicleModel vehicle, double current) {
+    BuildContext context,
+    VehicleModel vehicle,
+    double current,
+  ) {
     HapticFeedback.selectionClick();
     final initialVal = current > 0
         ? current.toStringAsFixed(0)
@@ -350,22 +386,26 @@ class DashboardScreen extends StatelessWidget {
             children: [
               Icon(AppIcons.speed, color: Color(0xFFFF5A24), size: 20),
               SizedBox(width: 6),
-              Text('校准当前表显里程',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              Text(
+                '校准当前表显里程',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
             ],
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('爱车【${vehicle.name}】实际仪表盘里程读数：',
-                  style:
-                      TextStyle(fontSize: 12, color: colors.onSurfaceVariant)),
+              Text(
+                '爱车【${vehicle.name}】实际仪表盘里程读数：',
+                style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
+              ),
               const SizedBox(height: 12),
               TextField(
                 controller: controller,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 autofocus: true,
                 decoration: const InputDecoration(
                   labelText: '表显总里程',
@@ -402,9 +442,12 @@ class DashboardScreen extends StatelessWidget {
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                          content: Text(success
+                        content: Text(
+                          success
                               ? '已更新【${vehicle.name}】表显里程为 ${val.toStringAsFixed(0)} km'
-                              : '更新失败，请重试')),
+                              : '更新失败，请重试',
+                        ),
+                      ),
                     );
                   }
                 }
@@ -421,13 +464,18 @@ class DashboardScreen extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label,
-            style: const TextStyle(color: Colors.white60, fontSize: 11)),
+        Text(
+          label,
+          style: const TextStyle(color: Colors.white60, fontSize: 11),
+        ),
         const SizedBox(height: 4),
         Text(
           value,
           style: TextStyle(
-              color: valueColor, fontSize: 14, fontWeight: FontWeight.bold),
+            color: valueColor,
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ],
     );
@@ -435,8 +483,9 @@ class DashboardScreen extends StatelessWidget {
 
   /// 保养与保险提醒 Banner
   Widget _buildReminderBanner(BuildContext context, List<dynamic> reminders) {
-    final urgentOrOverdue =
-        reminders.where((r) => r.isOverdue || r.isUrgent).toList();
+    final urgentOrOverdue = reminders
+        .where((r) => r.isOverdue || r.isUrgent)
+        .toList();
     if (urgentOrOverdue.isEmpty) return const SizedBox.shrink();
 
     final first = urgentOrOverdue.first;
@@ -526,7 +575,8 @@ class DashboardScreen extends StatelessWidget {
                 side: const BorderSide(color: Color(0xFF1E88E5)),
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)),
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
             ),
           ),
@@ -565,9 +615,10 @@ class DashboardScreen extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(vertical: 20),
               alignment: Alignment.center,
-              child: Text('暂无加油记录，点击上方按钮开始记账',
-                  style:
-                      TextStyle(color: colors.onSurfaceVariant, fontSize: 12)),
+              child: Text(
+                '暂无加油记录，点击上方按钮开始记账',
+                style: TextStyle(color: colors.onSurfaceVariant, fontSize: 12),
+              ),
             )
           else
             ...recent.map((r) {
@@ -576,8 +627,11 @@ class DashboardScreen extends StatelessWidget {
                 contentPadding: EdgeInsets.zero,
                 leading: const CircleAvatar(
                   backgroundColor: Color(0xFFFFF3E0),
-                  child: Icon(AppIcons.local_gas_station,
-                      color: Color(0xFFFF5A24), size: 18),
+                  child: Icon(
+                    AppIcons.local_gas_station,
+                    color: Color(0xFFFF5A24),
+                    size: 18,
+                  ),
                 ),
                 title: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -585,12 +639,16 @@ class DashboardScreen extends StatelessWidget {
                     Text(
                       DateFormatter.formatChineseYmd(r.refuelDate),
                       style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 13),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
                     ),
                     Text(
                       '¥${r.totalPrice.toStringAsFixed(2)}',
                       style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 14),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
                     ),
                   ],
                 ),
@@ -598,8 +656,9 @@ class DashboardScreen extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                        '${r.fuelAmount.toStringAsFixed(2)} L  |  ${r.fuelType}',
-                        style: const TextStyle(fontSize: 11)),
+                      '${r.fuelAmount.toStringAsFixed(2)} L  |  ${r.fuelType}',
+                      style: const TextStyle(fontSize: 11),
+                    ),
                     Text(
                       r.fuelConsumption != null
                           ? '${r.fuelConsumption!.toStringAsFixed(2)} L/100km'
@@ -627,10 +686,7 @@ class _DashboardMarqueeText extends StatefulWidget {
   final String text;
   final TextStyle style;
 
-  const _DashboardMarqueeText({
-    required this.text,
-    required this.style,
-  });
+  const _DashboardMarqueeText({required this.text, required this.style});
 
   @override
   State<_DashboardMarqueeText> createState() => _DashboardMarqueeTextState();
@@ -640,6 +696,8 @@ class _DashboardMarqueeTextState extends State<_DashboardMarqueeText> {
   late final ScrollController _scrollController;
   Timer? _scrollTimer;
   bool _isDisposed = false;
+  // 文本变化时递增，使在途的滚动动画回调链整体失效，避免叠加出双循环
+  int _generation = 0;
 
   @override
   void initState() {
@@ -659,33 +717,40 @@ class _DashboardMarqueeTextState extends State<_DashboardMarqueeText> {
       return;
     }
 
+    final gen = _generation;
     // 匀速平滑滚动：根据内容像素宽度计算平滑时长
-    final duration =
-        Duration(milliseconds: (maxExtent * 45).toInt().clamp(4000, 30000));
+    final duration = Duration(
+      milliseconds: (maxExtent * 45).toInt().clamp(4000, 30000),
+    );
 
     _scrollController
-        .animateTo(
-      maxExtent,
-      duration: duration,
-      curve: Curves.linear,
-    )
+        .animateTo(maxExtent, duration: duration, curve: Curves.linear)
         .then((_) {
-      if (_isDisposed || !mounted) return;
-      // 滚动到尽头后停顿 1.5 秒再无缝回弹重滚
-      _scrollTimer = Timer(const Duration(milliseconds: 1500), () {
-        if (_isDisposed || !mounted || !_scrollController.hasClients) return;
-        _scrollController.jumpTo(0.0);
-        _scrollTimer = Timer(const Duration(milliseconds: 800), () {
-          _startMarqueeLoop();
+          if (_isDisposed || !mounted || gen != _generation) return;
+          // 滚动到尽头后停顿 1.5 秒再无缝回弹重滚
+          _scrollTimer?.cancel();
+          _scrollTimer = Timer(const Duration(milliseconds: 1500), () {
+            if (_isDisposed ||
+                !mounted ||
+                !_scrollController.hasClients ||
+                gen != _generation) {
+              return;
+            }
+            _scrollController.jumpTo(0.0);
+            _scrollTimer?.cancel();
+            _scrollTimer = Timer(const Duration(milliseconds: 800), () {
+              if (_isDisposed || !mounted || gen != _generation) return;
+              _startMarqueeLoop();
+            });
+          });
         });
-      });
-    });
   }
 
   @override
   void didUpdateWidget(covariant _DashboardMarqueeText oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.text != widget.text) {
+      _generation++;
       _scrollTimer?.cancel();
       if (_scrollController.hasClients) {
         _scrollController.jumpTo(0.0);
@@ -708,11 +773,7 @@ class _DashboardMarqueeTextState extends State<_DashboardMarqueeText> {
       controller: _scrollController,
       scrollDirection: Axis.horizontal,
       physics: const NeverScrollableScrollPhysics(),
-      child: Text(
-        widget.text,
-        style: widget.style,
-        maxLines: 1,
-      ),
+      child: Text(widget.text, style: widget.style, maxLines: 1),
     );
   }
 }

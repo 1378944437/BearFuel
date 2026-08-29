@@ -126,7 +126,7 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
     '中国海油',
     '壳牌',
     '道达尔',
-    '民营特惠'
+    '民营特惠',
   ];
 
   // 距离范围限定选项
@@ -136,11 +136,13 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
     '1km',
     '2km',
     '3km',
-    '5km'
+    '5km',
   ];
 
   StreamSubscription<Position>? _positionStreamSub;
   bool _isFetchingStations = false;
+  // 请求进行中到达的最新定位，待本轮查询结束后补查
+  UserLocation? _pendingStationRefresh;
 
   bool get _isDemoMode => !AmapLocationService.isConfigured;
 
@@ -189,7 +191,12 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
       return;
     }
 
-    if (_isFetchingStations) return;
+    if (_isFetchingStations) {
+      // 请求进行中：登记最新坐标，待本轮结束后补查，
+      // 避免连续 GPS 流更新被静默丢弃导致最终位置永远不会被查询
+      _pendingStationRefresh = location;
+      return;
+    }
 
     final last = _lastOnlineQueryLocation;
     if (last != null &&
@@ -227,11 +234,12 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
         _stationError = pois == null
             ? '加油站查询失败，请检查高德 Key 或网络后重试'
             : stations.isEmpty
-                ? '当前位置附近暂未查询到加油站，可扩大范围或调整地图中心'
-                : null;
+            ? '当前位置附近暂未查询到加油站，可扩大范围或调整地图中心'
+            : null;
         // 请求失败时允许下一次手动定位/刷新重试，不锁死在失败坐标上。
-        _lastOnlineQueryLocation =
-            pois == null || stations.isEmpty ? null : location;
+        _lastOnlineQueryLocation = pois == null || stations.isEmpty
+            ? null
+            : location;
       });
     } catch (e) {
       if (mounted && requestId == _stationRequestId) {
@@ -243,6 +251,20 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
     } finally {
       // 取消、超时和页面切换都必须释放加载锁，否则后续刷新会被永久拦截。
       _isFetchingStations = false;
+      // 请求期间若有更新的定位到达，用最终位置补查一次
+      final pending = _pendingStationRefresh;
+      _pendingStationRefresh = null;
+      if (pending != null && requestId == _stationRequestId && mounted) {
+        if (LocationService.calculateDistanceKm(
+              lat1: pending.latitude,
+              lon1: pending.longitude,
+              lat2: location.latitude,
+              lon2: location.longitude,
+            ) >=
+            0.2) {
+          _refreshOnlineStations(pending);
+        }
+      }
     }
   }
 
@@ -267,8 +289,9 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
     super.initState();
     _currentCity = widget.initialCity ?? '北京';
     _gpsStatusText = _isDemoMode ? '未配置高德 Key，不加载真实站点数据' : '正在获取卫星 GPS 定位...';
-    _searchController =
-        TextEditingController(text: widget.initialStationName ?? '');
+    _searchController = TextEditingController(
+      text: widget.initialStationName ?? '',
+    );
     if (!_isDemoMode) {
       _initQuickLocation();
       _startContinuousGpsTracking();
@@ -301,7 +324,9 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
         final lastPos = await Geolocator.getLastKnownPosition();
         if (lastPos != null && mounted && !_manualLocationOverride) {
           final nearest = LocationService.findNearestTownship(
-              lastPos.latitude, lastPos.longitude);
+            lastPos.latitude,
+            lastPos.longitude,
+          );
           final townName = nearest?.townName;
           final displayCity = nearest?.cityName ?? _currentCity;
           final distToUrban = LocationService.distanceToCityCenter(
@@ -350,60 +375,64 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
       );
       _positionStreamSub =
           Geolocator.getPositionStream(locationSettings: settings).listen(
-        (Position pos) {
-          if (!mounted) return;
-          if (_manualLocationOverride ||
-              !LocationService.isUsablePosition(pos)) {
-            return;
-          }
-          final nearest =
-              LocationService.findNearestTownship(pos.latitude, pos.longitude);
-          final urbanDist = LocationService.distanceToCityCenter(
-            pos.latitude,
-            pos.longitude,
-            nearest?.cityName ?? _currentCity,
+            (Position pos) {
+              if (!mounted) return;
+              if (_manualLocationOverride ||
+                  !LocationService.isUsablePosition(pos)) {
+                return;
+              }
+              final nearest = LocationService.findNearestTownship(
+                pos.latitude,
+                pos.longitude,
+              );
+              final urbanDist = LocationService.distanceToCityCenter(
+                pos.latitude,
+                pos.longitude,
+                nearest?.cityName ?? _currentCity,
+              );
+              final isRural = urbanDist > 12;
+              final distStr = isRural
+                  ? ' · 距市中心 ${urbanDist.toStringAsFixed(1)}km'
+                  : '';
+
+              final newLoc = UserLocation(
+                latitude: pos.latitude,
+                longitude: pos.longitude,
+                accuracy: pos.accuracy,
+                cityName: nearest?.cityName ?? _currentCity,
+                district:
+                    nearest?.districtName ??
+                    (isRural
+                        ? '距市中心 ${urbanDist.toStringAsFixed(1)}km'
+                        : _currentGpsLocation?.district),
+                township: nearest?.townName ?? _currentGpsLocation?.township,
+                street: _currentGpsLocation?.street,
+                fullAddress:
+                    '北斗卫星实时锁定 (${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)})',
+                source: LocationSource.hardwareGnss,
+              );
+
+              LocationService.saveCachedLocation(newLoc);
+
+              setState(() {
+                _currentGpsLocation = newLoc;
+                _currentCity = newLoc.cityName;
+                _isLocating = false;
+                _gpsStatusText =
+                    '北斗硬件锁定 (±${pos.accuracy.toStringAsFixed(0)}m$distStr)';
+              });
+              _refreshStationsForCurrentLocation();
+            },
+            onError: (error) {
+              if (!mounted || _manualLocationOverride) return;
+              setState(() {
+                _isLocating = false;
+                if (_currentGpsLocation == null) {
+                  _gpsStatusText = 'GPS 定位失败，请检查定位权限后重试';
+                }
+              });
+            },
           );
-          final isRural = urbanDist > 12;
-          final distStr =
-              isRural ? ' · 距市中心 ${urbanDist.toStringAsFixed(1)}km' : '';
-
-          final newLoc = UserLocation(
-            latitude: pos.latitude,
-            longitude: pos.longitude,
-            accuracy: pos.accuracy,
-            cityName: nearest?.cityName ?? _currentCity,
-            district: nearest?.districtName ??
-                (isRural
-                    ? '距市中心 ${urbanDist.toStringAsFixed(1)}km'
-                    : _currentGpsLocation?.district),
-            township: nearest?.townName ?? _currentGpsLocation?.township,
-            street: _currentGpsLocation?.street,
-            fullAddress:
-                '北斗卫星实时锁定 (${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)})',
-            source: LocationSource.hardwareGnss,
-          );
-
-          LocationService.saveCachedLocation(newLoc);
-
-          setState(() {
-            _currentGpsLocation = newLoc;
-            _currentCity = newLoc.cityName;
-            _isLocating = false;
-            _gpsStatusText =
-                '北斗硬件锁定 (±${pos.accuracy.toStringAsFixed(0)}m$distStr)';
-          });
-          _refreshStationsForCurrentLocation();
-        },
-        onError: (error) {
-          if (!mounted || _manualLocationOverride) return;
-          setState(() {
-            _isLocating = false;
-            if (_currentGpsLocation == null) {
-              _gpsStatusText = 'GPS 定位失败，请检查定位权限后重试';
-            }
-          });
-        },
-      );
     } catch (_) {
       if (mounted && !_manualLocationOverride) {
         setState(() {
@@ -462,8 +491,9 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
           loc.longitude,
           loc.cityName,
         );
-        final distText =
-            urbanDist > 12 ? ' (距市中心 ${urbanDist.toStringAsFixed(1)}km)' : '';
+        final distText = urbanDist > 12
+            ? ' (距市中心 ${urbanDist.toStringAsFixed(1)}km)'
+            : '';
         LocationService.saveCachedLocation(loc);
 
         setState(() {
@@ -504,7 +534,8 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
 
     return baseList.where((station) {
       // 品牌过滤
-      final matchesBrand = _selectedBrand == '全部' ||
+      final matchesBrand =
+          _selectedBrand == '全部' ||
           station.brand == _selectedBrand ||
           (_selectedBrand == '民营特惠' &&
               !['中国石化', '中国石油', '中国海油', '壳牌', '道达尔'].contains(station.brand));
@@ -513,7 +544,8 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
       final matchesDistance = maxDist == null || station.distanceKm <= maxDist;
 
       // 搜索词过滤
-      final matchesQuery = query.isEmpty ||
+      final matchesQuery =
+          query.isEmpty ||
           station.name.toLowerCase().contains(query) ||
           station.address.toLowerCase().contains(query) ||
           station.brand.toLowerCase().contains(query) ||
@@ -556,13 +588,18 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                             color: colors.primary.withValues(alpha: 0.12),
                             borderRadius: BorderRadius.circular(7),
                           ),
-                          child: Icon(AppIcons.near_me,
-                              color: colors.primary, size: 18),
+                          child: Icon(
+                            AppIcons.near_me,
+                            color: colors.primary,
+                            size: 18,
+                          ),
                         ),
                         const SizedBox(width: 10),
                         Expanded(
-                          child: Text('选择加油站',
-                              style: Theme.of(context).textTheme.titleLarge),
+                          child: Text(
+                            '选择加油站',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
                         ),
                         IconButton(
                           tooltip: '关闭',
@@ -666,7 +703,9 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                             ),
                             child: Padding(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 7, vertical: 3),
+                                horizontal: 7,
+                                vertical: 3,
+                              ),
                               child: Text(
                                 '${filtered.length}站',
                                 style: TextStyle(
@@ -716,8 +755,9 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                         selectedColor: colors.secondary,
                         labelStyle: TextStyle(
                           color: isSel ? colors.onPrimary : colors.onSurface,
-                          fontWeight:
-                              isSel ? FontWeight.bold : FontWeight.normal,
+                          fontWeight: isSel
+                              ? FontWeight.bold
+                              : FontWeight.normal,
                         ),
                         onSelected: (val) {
                           if (val) {
@@ -745,14 +785,17 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                     return Padding(
                       padding: const EdgeInsets.only(right: 6),
                       child: ChoiceChip(
-                        label:
-                            Text(brand, style: const TextStyle(fontSize: 11)),
+                        label: Text(
+                          brand,
+                          style: const TextStyle(fontSize: 11),
+                        ),
                         selected: isSel,
                         selectedColor: colors.primary,
                         labelStyle: TextStyle(
                           color: isSel ? colors.onPrimary : colors.onSurface,
-                          fontWeight:
-                              isSel ? FontWeight.bold : FontWeight.normal,
+                          fontWeight: isSel
+                              ? FontWeight.bold
+                              : FontWeight.normal,
                         ),
                         onSelected: (val) {
                           if (val) setState(() => _selectedBrand = brand);
@@ -773,8 +816,11 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(AppIcons.location_off_outlined,
-                                size: 48, color: colors.onSurfaceVariant),
+                            Icon(
+                              AppIcons.location_off_outlined,
+                              size: 48,
+                              color: colors.onSurfaceVariant,
+                            ),
                             const SizedBox(height: 12),
                             Text(
                               '在$_currentCity ${_selectedDistanceRange != "不限" ? "$_selectedDistanceRange内" : ""}未找到符合条件的加油站',
@@ -785,7 +831,9 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                               onPressed: () {
                                 if (_searchController.text.isNotEmpty) {
                                   Navigator.pop(
-                                      context, _searchController.text.trim());
+                                    context,
+                                    _searchController.text.trim(),
+                                  );
                                 }
                               },
                               child: const Text('使用输入的站名'),
@@ -829,18 +877,20 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                                           child: Text(
                                             item.name,
                                             style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 14,
-                                                color: colors.onSurface),
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 14,
+                                              color: colors.onSurface,
+                                            ),
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                         ),
                                         Text(
                                           '${item.distanceKm} km',
                                           style: TextStyle(
-                                              fontSize: 11,
-                                              color: colors.primary,
-                                              fontWeight: FontWeight.bold),
+                                            fontSize: 11,
+                                            color: colors.primary,
+                                            fontWeight: FontWeight.bold,
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -861,8 +911,8 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                                                   : colors.onSurfaceVariant,
                                               fontWeight:
                                                   item.discountInfo != null
-                                                      ? FontWeight.w600
-                                                      : FontWeight.normal,
+                                                  ? FontWeight.w600
+                                                  : FontWeight.normal,
                                             ),
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
@@ -877,16 +927,21 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                                             backgroundColor: colors.primary,
                                             foregroundColor: Colors.white,
                                             padding: const EdgeInsets.symmetric(
-                                                horizontal: 14, vertical: 6),
+                                              horizontal: 14,
+                                              vertical: 6,
+                                            ),
                                             minimumSize: Size.zero,
                                             tapTargetSize: MaterialTapTargetSize
                                                 .shrinkWrap,
                                             shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(6)),
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                            ),
                                           ),
-                                          child: const Text('选此站',
-                                              style: TextStyle(fontSize: 12)),
+                                          child: const Text(
+                                            '选此站',
+                                            style: TextStyle(fontSize: 12),
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -915,15 +970,19 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
   }) {
     final background = isDark
         ? Color.alphaBlend(
-            foreground.withValues(alpha: 0.14), const Color(0xFF1E1E1E))
+            foreground.withValues(alpha: 0.14),
+            const Color(0xFF1E1E1E),
+          )
         : foreground.withValues(alpha: 0.08);
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
       padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
       decoration: BoxDecoration(
         color: background,
-        border:
-            Border.all(color: foreground.withValues(alpha: 0.65), width: 1.2),
+        border: Border.all(
+          color: foreground.withValues(alpha: 0.65),
+          width: 1.2,
+        ),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -934,7 +993,10 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
             child: Text(
               message,
               style: TextStyle(
-                  fontSize: 12, color: foreground, fontWeight: FontWeight.w600),
+                fontSize: 12,
+                color: foreground,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
           if (actionLabel != null && onAction != null) ...[
@@ -999,24 +1061,32 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
         decoration: BoxDecoration(
           color: const Color(0xFFFF5A24).withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(12),
-          border:
-              Border.all(color: const Color(0xFFFF5A24).withValues(alpha: 0.3)),
+          border: Border.all(
+            color: const Color(0xFFFF5A24).withValues(alpha: 0.3),
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(AppIcons.location_on,
-                size: 14, color: Color(0xFFFF5A24)),
+            const Icon(
+              AppIcons.location_on,
+              size: 14,
+              color: Color(0xFFFF5A24),
+            ),
             const SizedBox(width: 2),
             Text(
               _currentCity,
               style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFFFF5A24),
-                  fontWeight: FontWeight.bold),
+                fontSize: 12,
+                color: Color(0xFFFF5A24),
+                fontWeight: FontWeight.bold,
+              ),
             ),
-            const Icon(AppIcons.arrow_drop_down,
-                size: 16, color: Color(0xFFFF5A24)),
+            const Icon(
+              AppIcons.arrow_drop_down,
+              size: 16,
+              color: Color(0xFFFF5A24),
+            ),
           ],
         ),
       ),
@@ -1055,16 +1125,23 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
             return Padding(
               padding: const EdgeInsets.only(right: 6),
               child: ActionChip(
-                avatar: const Icon(AppIcons.more_horiz,
-                    size: 13, color: Color(0xFF1E88E5)),
-                label: const Text('更多片区',
-                    style: TextStyle(
-                        fontSize: 10.5,
-                        color: Color(0xFF1E88E5),
-                        fontWeight: FontWeight.bold)),
+                avatar: const Icon(
+                  AppIcons.more_horiz,
+                  size: 13,
+                  color: Color(0xFF1E88E5),
+                ),
+                label: const Text(
+                  '更多片区',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    color: Color(0xFF1E88E5),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 backgroundColor: const Color(0xFF1E88E5).withValues(alpha: 0.1),
                 side: BorderSide(
-                    color: const Color(0xFF1E88E5).withValues(alpha: 0.3)),
+                  color: const Color(0xFF1E88E5).withValues(alpha: 0.3),
+                ),
                 padding: EdgeInsets.zero,
                 labelPadding: const EdgeInsets.symmetric(horizontal: 4),
                 onPressed: () => _showTownshipPicker(context),
@@ -1084,7 +1161,8 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
               .replaceAll('铺', '')
               .replaceAll('/龙泉', '');
 
-          final isSelected = _currentGpsLocation?.township == townFullName ||
+          final isSelected =
+              _currentGpsLocation?.township == townFullName ||
               (_currentGpsLocation != null &&
                   LocationService.calculateDistanceKm(
                         lat1: _currentGpsLocation!.latitude,
@@ -1103,8 +1181,9 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
               label: Text(shortName, style: const TextStyle(fontSize: 10.5)),
               selected: isSelected,
               selectedColor: const Color(0xFF1E88E5),
-              backgroundColor:
-                  isDark ? const Color(0xFF2C2C2C) : const Color(0xFFF3F4F6),
+              backgroundColor: isDark
+                  ? const Color(0xFF2C2C2C)
+                  : const Color(0xFFF3F4F6),
               labelStyle: TextStyle(
                 color: isSelected ? colors.onPrimary : colors.onSurface,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
@@ -1155,7 +1234,8 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
   Widget _buildTownshipButton(bool isDark) {
     if (_isDemoMode) return const SizedBox.shrink();
 
-    final currentTown = _currentGpsLocation?.township
+    final currentTown =
+        _currentGpsLocation?.township
             ?.replaceAll('镇', '')
             .replaceAll('乡', '')
             .replaceAll('街道', '') ??
@@ -1168,24 +1248,32 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
         decoration: BoxDecoration(
           color: const Color(0xFF1E88E5).withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(12),
-          border:
-              Border.all(color: const Color(0xFF1E88E5).withValues(alpha: 0.3)),
+          border: Border.all(
+            color: const Color(0xFF1E88E5).withValues(alpha: 0.3),
+          ),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(AppIcons.location_city,
-                size: 14, color: Color(0xFF1E88E5)),
+            const Icon(
+              AppIcons.location_city,
+              size: 14,
+              color: Color(0xFF1E88E5),
+            ),
             const SizedBox(width: 2),
             Text(
               currentTown,
               style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF1E88E5),
-                  fontWeight: FontWeight.bold),
+                fontSize: 12,
+                color: Color(0xFF1E88E5),
+                fontWeight: FontWeight.bold,
+              ),
             ),
-            const Icon(AppIcons.arrow_drop_down,
-                size: 16, color: Color(0xFF1E88E5)),
+            const Icon(
+              AppIcons.arrow_drop_down,
+              size: 16,
+              color: Color(0xFF1E88E5),
+            ),
           ],
         ),
       ),
@@ -1215,8 +1303,9 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
               height: MediaQuery.of(context).size.height * 0.75,
               decoration: BoxDecoration(
                 color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(20)),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(20),
+                ),
               ),
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
               child: Column(
@@ -1227,17 +1316,24 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                     children: [
                       const Row(
                         children: [
-                          Icon(AppIcons.location_city,
-                              color: Color(0xFF1E88E5)),
+                          Icon(
+                            AppIcons.location_city,
+                            color: Color(0xFF1E88E5),
+                          ),
                           SizedBox(width: 8),
-                          Text('选择所在片区 / 街道 / 镇',
-                              style: TextStyle(
-                                  fontSize: 16, fontWeight: FontWeight.bold)),
+                          Text(
+                            '选择所在片区 / 街道 / 镇',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         ],
                       ),
                       IconButton(
-                          icon: const Icon(AppIcons.close),
-                          onPressed: () => Navigator.pop(ctx)),
+                        icon: const Icon(AppIcons.close),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -1260,27 +1356,41 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                         final t = towns[i];
                         final distToUrban =
                             LocationService.distanceToCityCenter(
-                          t.latitude,
-                          t.longitude,
-                          t.cityName,
-                        );
+                              t.latitude,
+                              t.longitude,
+                              t.cityName,
+                            );
                         return ListTile(
                           contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 2),
-                          leading: CircleAvatar(
-                            backgroundColor:
-                                const Color(0xFF1E88E5).withValues(alpha: 0.12),
-                            child: const Icon(AppIcons.location_on,
-                                color: Color(0xFF1E88E5), size: 18),
+                            horizontal: 8,
+                            vertical: 2,
                           ),
-                          title: Text(t.townName,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.bold, fontSize: 14)),
+                          leading: CircleAvatar(
+                            backgroundColor: const Color(
+                              0xFF1E88E5,
+                            ).withValues(alpha: 0.12),
+                            child: const Icon(
+                              AppIcons.location_on,
+                              color: Color(0xFF1E88E5),
+                              size: 18,
+                            ),
+                          ),
+                          title: Text(
+                            t.townName,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
                           subtitle: Text(
-                              '${t.cityName} · ${t.districtName} (距市中心 ${distToUrban.toStringAsFixed(1)}km)',
-                              style: const TextStyle(fontSize: 12)),
-                          trailing: Icon(AppIcons.arrow_forward_ios,
-                              size: 14, color: colors.onSurfaceVariant),
+                            '${t.cityName} · ${t.districtName} (距市中心 ${distToUrban.toStringAsFixed(1)}km)',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          trailing: Icon(
+                            AppIcons.arrow_forward_ios,
+                            size: 14,
+                            color: colors.onSurfaceVariant,
+                          ),
                           onTap: () {
                             HapticFeedback.selectionClick();
                             _locationRequestId++;
@@ -1323,7 +1433,9 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
 
   /// 绘制支持手势自由拖动平移探索的科技风电子卫星地图视图
   Widget _buildVisualMapView(
-      bool isDark, List<GasStationInfo> visibleStations) {
+    bool isDark,
+    List<GasStationInfo> visibleStations,
+  ) {
     return Container(
       height: 140,
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -1352,8 +1464,10 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
               // 1. 随拖拽平移的动态道路与街区网格
               CustomPaint(
                 size: Size.infinite,
-                painter:
-                    _MapGridPainter(isDark: isDark, panOffset: _mapPanOffset),
+                painter: _MapGridPainter(
+                  isDark: isDark,
+                  panOffset: _mapPanOffset,
+                ),
               ),
 
               // 2. 随地图平移的周边加油站 POI 坐标图钉标记
@@ -1370,7 +1484,9 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                       const SizedBox(height: 2),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 4, vertical: 1),
+                          horizontal: 4,
+                          vertical: 1,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xFFFF5A24),
                           borderRadius: BorderRadius.circular(4),
@@ -1378,9 +1494,10 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                         child: const Text(
                           '我的位置',
                           style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold),
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ],
@@ -1435,26 +1552,32 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                         borderRadius: BorderRadius.circular(20),
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
                           margin: const EdgeInsets.only(right: 6),
                           decoration: BoxDecoration(
                             color: Colors.blue[700],
                             borderRadius: BorderRadius.circular(20),
                             boxShadow: const [
-                              BoxShadow(color: Colors.black26, blurRadius: 4)
+                              BoxShadow(color: Colors.black26, blurRadius: 4),
                             ],
                           ),
                           child: const Row(
                             children: [
-                              Icon(AppIcons.pin_drop,
-                                  size: 12, color: Colors.white),
+                              Icon(
+                                AppIcons.pin_drop,
+                                size: 12,
+                                color: Colors.white,
+                              ),
                               SizedBox(width: 4),
                               Text(
                                 '设为选站中心',
                                 style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold),
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ],
                           ),
@@ -1468,26 +1591,32 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                         borderRadius: BorderRadius.circular(20),
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 3),
+                            horizontal: 8,
+                            vertical: 3,
+                          ),
                           margin: const EdgeInsets.only(right: 6),
                           decoration: BoxDecoration(
                             color: const Color(0xFFFF5A24),
                             borderRadius: BorderRadius.circular(20),
                             boxShadow: const [
-                              BoxShadow(color: Colors.black26, blurRadius: 4)
+                              BoxShadow(color: Colors.black26, blurRadius: 4),
                             ],
                           ),
                           child: const Row(
                             children: [
-                              Icon(AppIcons.center_focus_strong,
-                                  size: 12, color: Colors.white),
+                              Icon(
+                                AppIcons.center_focus_strong,
+                                size: 12,
+                                color: Colors.white,
+                              ),
                               SizedBox(width: 4),
                               Text(
                                 '复位',
                                 style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold),
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ],
                           ),
@@ -1499,7 +1628,9 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                       borderRadius: BorderRadius.circular(20),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 3),
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.black.withValues(alpha: 0.75),
                           borderRadius: BorderRadius.circular(20),
@@ -1512,18 +1643,24 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                                 width: 10,
                                 height: 10,
                                 child: CircularProgressIndicator(
-                                    strokeWidth: 1.5, color: Color(0xFFFF5A24)),
+                                  strokeWidth: 1.5,
+                                  color: Color(0xFFFF5A24),
+                                ),
                               )
                             else
-                              const Icon(AppIcons.satellite_alt,
-                                  size: 12, color: Colors.greenAccent),
+                              const Icon(
+                                AppIcons.satellite_alt,
+                                size: 12,
+                                color: Colors.greenAccent,
+                              ),
                             const SizedBox(width: 4),
                             Text(
                               _isLocating ? '校准中' : '高精校准',
                               style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold),
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ],
                         ),
@@ -1539,8 +1676,10 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                 bottom: 6,
                 right: 8,
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.85),
                     borderRadius: BorderRadius.circular(6),
@@ -1563,7 +1702,9 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                               ? 'GPS 经度: ${_currentGpsLocation!.longitude.toStringAsFixed(4)}° 纬度: ${_currentGpsLocation!.latitude.toStringAsFixed(4)}° (${_currentGpsLocation!.accuracy == null ? "手动中心" : "精度 ±${_currentGpsLocation!.accuracy!.toStringAsFixed(0)}m"} · ${_currentGpsLocation!.district ?? _currentCity})'
                               : _gpsStatusText,
                           style: const TextStyle(
-                              color: Colors.white, fontSize: 10),
+                            color: Colors.white,
+                            fontSize: 10,
+                          ),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
@@ -1580,7 +1721,9 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
 
   /// 构造分布在可拖动地图上的加油站图钉组件
   List<Widget> _buildMapStationMarkers(
-      bool isDark, List<GasStationInfo> visibleStations) {
+    bool isDark,
+    List<GasStationInfo> visibleStations,
+  ) {
     final colors = Theme.of(context).colorScheme;
     final List<Widget> markers = [];
     final centerLat = _mapCenterLatitude;
@@ -1590,14 +1733,16 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
       final st = visibleStations[i];
       // Draw with the same local projection used when resolving a dragged
       // map center back to latitude/longitude.
-      final double dx = LocalMapProjection.xForCoordinate(
+      final double dx =
+          LocalMapProjection.xForCoordinate(
             latitude: st.latitude,
             longitude: st.longitude,
             centerLatitude: centerLat,
             centerLongitude: centerLon,
           ) +
           _mapPanOffset.dx;
-      final double dy = LocalMapProjection.yForCoordinate(
+      final double dy =
+          LocalMapProjection.yForCoordinate(
             latitude: st.latitude,
             centerLatitude: centerLat,
           ) +
@@ -1615,14 +1760,16 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: isDark ? const Color(0xFF22272E) : Colors.white,
                       borderRadius: BorderRadius.circular(4),
                       border: Border.all(color: brandColor, width: 1.2),
                       boxShadow: const [
-                        BoxShadow(color: Colors.black26, blurRadius: 3)
+                        BoxShadow(color: Colors.black26, blurRadius: 3),
                       ],
                     ),
                     child: Row(
@@ -1632,7 +1779,9 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                           width: 6,
                           height: 6,
                           decoration: BoxDecoration(
-                              color: brandColor, shape: BoxShape.circle),
+                            color: brandColor,
+                            shape: BoxShape.circle,
+                          ),
                         ),
                         const SizedBox(width: 3),
                         Text(
@@ -1720,14 +1869,17 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                     child: Text(
                       st.name,
                       style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.bold,
-                          color: colors.onSurface),
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                        color: colors.onSurface,
+                      ),
                     ),
                   ),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFFFF5A24).withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(4),
@@ -1735,27 +1887,35 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                     child: Text(
                       '距您 ${st.distanceKm} km',
                       style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFFFF5A24),
-                          fontWeight: FontWeight.bold),
+                        fontSize: 12,
+                        color: Color(0xFFFF5A24),
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 6),
-              Text(st.address,
-                  style:
-                      TextStyle(fontSize: 12, color: colors.onSurfaceVariant)),
+              Text(
+                st.address,
+                style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
+              ),
               const Divider(height: 20),
 
               // 实时油价看板大字卡片
-              const Text('今日各标号指导/特惠油价',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+              const Text(
+                '今日各标号指导/特惠油价',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 8),
               if (st.fuelPrices.isEmpty)
-                Text('暂无实时油价数据',
-                    style:
-                        TextStyle(fontSize: 12, color: colors.onSurfaceVariant))
+                Text(
+                  '暂无实时油价数据',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colors.onSurfaceVariant,
+                  ),
+                )
               else
                 Row(
                   children: [
@@ -1765,32 +1925,41 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                       final color = is92
                           ? const Color(0xFFFF5A24)
                           : (is95
-                              ? const Color(0xFF1E88E5)
-                              : const Color(0xFF00897B));
+                                ? const Color(0xFF1E88E5)
+                                : const Color(0xFF00897B));
                       return Expanded(
                         child: Container(
                           margin: const EdgeInsets.only(right: 6),
                           padding: const EdgeInsets.symmetric(
-                              vertical: 8, horizontal: 6),
+                            vertical: 8,
+                            horizontal: 6,
+                          ),
                           decoration: BoxDecoration(
                             color: color.withValues(alpha: 0.08),
                             borderRadius: BorderRadius.circular(8),
-                            border:
-                                Border.all(color: color.withValues(alpha: 0.2)),
+                            border: Border.all(
+                              color: color.withValues(alpha: 0.2),
+                            ),
                           ),
                           child: Column(
                             children: [
-                              Text(e.key,
-                                  style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                      color: color)),
+                              Text(
+                                e.key,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: color,
+                                ),
+                              ),
                               const SizedBox(height: 2),
-                              Text('¥${e.value.toStringAsFixed(2)}',
-                                  style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w900,
-                                      color: color)),
+                              Text(
+                                '¥${e.value.toStringAsFixed(2)}',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w900,
+                                  color: color,
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -1810,16 +1979,20 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(AppIcons.local_offer_outlined,
-                          size: 16, color: Colors.red),
+                      const Icon(
+                        AppIcons.local_offer_outlined,
+                        size: 16,
+                        color: Colors.red,
+                      ),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
                           '优惠政策: ${st.discountInfo!}',
                           style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.red[900],
-                              fontWeight: FontWeight.bold),
+                            fontSize: 12,
+                            color: Colors.red[900],
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ],
@@ -1831,12 +2004,19 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
               // 营业时间与服务设施
               Row(
                 children: [
-                  Icon(AppIcons.access_time,
-                      size: 14, color: colors.onSurfaceVariant),
+                  Icon(
+                    AppIcons.access_time,
+                    size: 14,
+                    color: colors.onSurfaceVariant,
+                  ),
                   const SizedBox(width: 6),
-                  Text('营业时间: ${st.businessHours}',
-                      style: const TextStyle(
-                          fontSize: 12, fontWeight: FontWeight.w600)),
+                  Text(
+                    '营业时间: ${st.businessHours}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -1845,15 +2025,21 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                 runSpacing: 6,
                 children: st.services.map((srv) {
                   return Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.grey.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(4),
                     ),
-                    child: Text(srv,
-                        style: TextStyle(
-                            fontSize: 11, color: colors.onSurfaceVariant)),
+                    child: Text(
+                      srv,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
                   );
                 }).toList(),
               ),
@@ -1950,26 +2136,37 @@ class _MapGridPainter extends CustomPainter {
     final offsetX = panOffset.dx % spacing;
     final offsetY = panOffset.dy % spacing;
 
-    for (double x = -spacing + offsetX;
-        x <= size.width + spacing;
-        x += spacing) {
+    for (
+      double x = -spacing + offsetX;
+      x <= size.width + spacing;
+      x += spacing
+    ) {
       canvas.drawLine(Offset(x, 0), Offset(x, size.height), secondaryRoadPaint);
     }
-    for (double y = -spacing + offsetY;
-        y <= size.height + spacing;
-        y += spacing) {
+    for (
+      double y = -spacing + offsetY;
+      y <= size.height + spacing;
+      y += spacing
+    ) {
       canvas.drawLine(Offset(0, y), Offset(size.width, y), secondaryRoadPaint);
     }
 
     // 主干道
-    final mainY = (size.height * 0.5 + panOffset.dy) % (size.height * 2) -
+    final mainY =
+        (size.height * 0.5 + panOffset.dy) % (size.height * 2) -
         size.height * 0.5;
     final mainX =
         (size.width * 0.5 + panOffset.dx) % (size.width * 2) - size.width * 0.5;
-    canvas.drawLine(Offset(0, mainY + size.height * 0.5),
-        Offset(size.width, mainY + size.height * 0.5), roadPaint);
-    canvas.drawLine(Offset(mainX + size.width * 0.5, 0),
-        Offset(mainX + size.width * 0.5, size.height), roadPaint);
+    canvas.drawLine(
+      Offset(0, mainY + size.height * 0.5),
+      Offset(size.width, mainY + size.height * 0.5),
+      roadPaint,
+    );
+    canvas.drawLine(
+      Offset(mainX + size.width * 0.5, 0),
+      Offset(mainX + size.width * 0.5, size.height),
+      roadPaint,
+    );
   }
 
   @override

@@ -6,10 +6,9 @@ class ExternalUrlLauncher {
 
   static Future<bool> open(String url) async {
     try {
-      return await _channel.invokeMethod<bool>(
-            'openUrl',
-            <String, dynamic>{'url': url},
-          ) ??
+      return await _channel.invokeMethod<bool>('openUrl', <String, dynamic>{
+            'url': url,
+          }) ??
           false;
     } catch (_) {
       return false;

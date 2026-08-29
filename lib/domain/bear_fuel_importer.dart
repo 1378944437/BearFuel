@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:gbk_codec/gbk_codec.dart';
 import 'package:uuid/uuid.dart';
 import '../data/models/refuel_record_model.dart';
 import '../core/constants/app_constants.dart';
@@ -45,6 +46,7 @@ class BearFuelImporter {
       try {
         final rows = _parseCfbXls(bytes);
         if (rows != null && rows.isNotEmpty) {
+          _convertXlsDateColumn(rows);
           return _parseRows(rows, vehicleId);
         }
       } catch (e) {
@@ -64,13 +66,63 @@ class BearFuelImporter {
         content = utf8.decode(bytes);
       }
     } catch (_) {
-      return ImportResult(
-        success: false,
-        errorMessage: '文件不是 UTF-8 编码，请另存为 UTF-8 CSV 后再导入',
-      );
+      // UTF-8 解码失败时按 GBK 重试（中文 Windows Excel 另存的默认 ANSI 编码）
+      try {
+        content = gbk_bytes.decode(bytes);
+      } catch (_) {
+        return ImportResult(
+          success: false,
+          errorMessage: '文件编码无法识别，请另存为 UTF-8 CSV 后再导入',
+        );
+      }
     }
 
     return parseCsv(content, vehicleId);
+  }
+
+  /// Excel 日期序列数上下界（约 1954-09-18 至 2099-12-31）
+  static const double _excelSerialMin = 20000;
+  static const double _excelSerialMax = 73050;
+
+  /// .xls 中日期单元格以 Excel 序列数存储（如 45210.5），
+  /// 仅当表头明确为日期列时把该列的序列数转换为日期文本，
+  /// 避免里程等普通数值列被误判转换。
+  static void _convertXlsDateColumn(List<List<String>> rows) {
+    if (rows.isEmpty) return;
+    final header = rows.first;
+    for (int c = 0; c < header.length; c++) {
+      final h = header[c].trim().toLowerCase();
+      final isDateCol =
+          h.contains('时间') || h.contains('日期') || h == 'date' || h == 'time';
+      if (!isDateCol) continue;
+      for (int r = 1; r < rows.length; r++) {
+        if (c >= rows[r].length) continue;
+        final cell = rows[r][c].trim();
+        if (cell.isEmpty) continue;
+        if (DateFormatter.tryParse(cell) != null) continue;
+        final serial = double.tryParse(cell);
+        if (serial == null ||
+            serial < _excelSerialMin ||
+            serial > _excelSerialMax) {
+          continue;
+        }
+        rows[r][c] = _formatExcelSerial(serial);
+      }
+    }
+  }
+
+  /// 把 Excel 日期序列数格式化为 "yyyy-MM-dd HH:mm" 文本
+  static String _formatExcelSerial(double serial) {
+    final days = serial.floor();
+    final frac = serial - days;
+    final dt = DateTime.utc(
+      1899,
+      12,
+      30,
+    ).add(Duration(days: days, minutes: (frac * 24 * 60).round()));
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${dt.year}-${two(dt.month)}-${two(dt.day)} '
+        '${two(dt.hour)}:${two(dt.minute)}';
   }
 
   /// 解析小熊油耗 CSV/TSV 文本格式字符串
@@ -80,8 +132,9 @@ class BearFuelImporter {
     }
 
     try {
-      final content =
-          csvContent.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+      final content = csvContent
+          .replaceAll('\r\n', '\n')
+          .replaceAll('\r', '\n');
       final lines = _splitCsvRecords(
         content,
       ).where((e) => e.trim().isNotEmpty).toList();
@@ -210,10 +263,10 @@ class BearFuelImporter {
         final isFullTank = (fullStr == null || fullStr.isEmpty)
             ? true
             : (fullStr.contains('是') ||
-                fullStr == '1' ||
-                fullStr.contains('满') ||
-                fullStr == 'true' ||
-                fullStr == 'yes');
+                  fullStr == '1' ||
+                  fullStr.contains('满') ||
+                  fullStr == 'true' ||
+                  fullStr == 'yes');
 
         // 是否漏记
         final forgotStr = _getColValue(
@@ -223,10 +276,10 @@ class BearFuelImporter {
         final isForgotPrevious = (forgotStr == null || forgotStr.isEmpty)
             ? false
             : (forgotStr.contains('是') ||
-                forgotStr == '1' ||
-                forgotStr.contains('漏') ||
-                forgotStr == 'true' ||
-                forgotStr == 'yes');
+                  forgotStr == '1' ||
+                  forgotStr.contains('漏') ||
+                  forgotStr == 'true' ||
+                  forgotStr == 'yes');
 
         // 油品
         var rawFuel = _getColValue(row, colMap['fuelType']) ?? FuelType.gas92;
@@ -255,7 +308,8 @@ class BearFuelImporter {
             unitPrice: unitPrice,
             totalPrice: totalPrice,
             fuelType: rawFuel,
-            gasStation: (gasStation != null &&
+            gasStation:
+                (gasStation != null &&
                     gasStation.isNotEmpty &&
                     gasStation != 'nan')
                 ? gasStation
@@ -314,6 +368,13 @@ class BearFuelImporter {
   static Map<String, int> _detectColumns(List<String> headers) {
     final Map<String, int> map = {};
 
+    // 首个匹配生效，避免同义词列相互覆盖
+    void assign(String key, int index) {
+      if (!map.containsKey(key)) {
+        map[key] = index;
+      }
+    }
+
     for (int i = 0; i < headers.length; i++) {
       final h = headers[i].trim().toLowerCase();
       if (h.contains('时间') ||
@@ -321,14 +382,14 @@ class BearFuelImporter {
           h == 'date' ||
           h == 'time' ||
           h.contains('加油时间')) {
-        map['date'] = i;
+        assign('date', i);
       } else if (h.contains('当前里程') ||
           h.contains('总里程') ||
           h.contains('里程') ||
           h.contains('表显') ||
           h == 'mileage' ||
           h == 'odometer') {
-        map['mileage'] = i;
+        assign('mileage', i);
       } else if (h.contains('加油量') ||
           h.contains('升数') ||
           h.contains('油量') ||
@@ -336,45 +397,53 @@ class BearFuelImporter {
           h == 'amount' ||
           h == 'volume' ||
           h == 'liters') {
-        map['fuelAmount'] = i;
+        assign('fuelAmount', i);
       } else if (h.contains('单价') ||
           h.contains('油价') ||
           h == 'price' ||
           h == 'unit_price') {
-        map['unitPrice'] = i;
+        assign('unitPrice', i);
+      } else if (h.contains('百公里油耗') || h.contains('油耗') || h == 'l/100km') {
+        // 计算值列（本应用导出表头）：导入后由计算器重算，单独登记避免误占
+        assign('fuelConsumption', i);
+      } else if (h.contains('每公里花费') ||
+          h.contains('每公里成本') ||
+          h.contains('公里花费')) {
+        // 计算值列：必须先于下方 "花费" 关键词判断，否则会抢占总价列
+        assign('costPerKm', i);
       } else if (h.contains('实付') ||
           h.contains('金额') ||
           h.contains('总额') ||
           h.contains('花费') ||
           h == 'total' ||
           h == 'cost') {
-        map['totalPrice'] = i;
+        assign('totalPrice', i);
       } else if (h.contains('满') ||
           h == 'is_full' ||
           h == 'isfull' ||
           h.contains('加满')) {
-        map['isFullTank'] = i;
+        assign('isFullTank', i);
       } else if (h.contains('漏') ||
           h == 'forgot' ||
           h == 'is_forgot' ||
           h.contains('漏记')) {
-        map['isForgotPrevious'] = i;
+        assign('isForgotPrevious', i);
       } else if (h.contains('油品') ||
           h.contains('标号') ||
           h.contains('油号') ||
           h == 'type' ||
           h == 'fuel_type') {
-        map['fuelType'] = i;
+        assign('fuelType', i);
       } else if (h.contains('站') ||
           h == 'station' ||
           h == 'gas_station' ||
           h.contains('油站')) {
-        map['gasStation'] = i;
+        assign('gasStation', i);
       } else if (h.contains('备注') ||
           h == 'note' ||
           h == 'remark' ||
           h.contains('说明')) {
-        map['note'] = i;
+        assign('note', i);
       }
     }
 
@@ -409,23 +478,20 @@ class BearFuelImporter {
       // 3. 数字类型判断
       final numVal = _parseNumber(val);
       if (numVal != null) {
+        // 里程列：优先大数值；索引 1 处排除常见单价/油量量级，防止把油价当里程
         if (!map.containsKey('mileage') &&
             numVal >= 0 &&
-            (i == 1 || numVal > 100)) {
+            (numVal > 100 || (i == 1 && numVal > 15))) {
           map['mileage'] = i;
         } else if (!map.containsKey('unitPrice') &&
             numVal >= 4.0 &&
-            numVal <= 15.0 &&
-            (i == 2 || i == 3)) {
+            numVal <= 15.0) {
           map['unitPrice'] = i;
         } else if (!map.containsKey('fuelAmount') &&
             numVal >= 2.0 &&
-            numVal <= 150.0 &&
-            (i == 3 || i == 2)) {
+            numVal <= 150.0) {
           map['fuelAmount'] = i;
-        } else if (!map.containsKey('totalPrice') &&
-            numVal > 30.0 &&
-            (i == 4 || i == 5)) {
+        } else if (!map.containsKey('totalPrice') && numVal > 30.0) {
           map['totalPrice'] = i;
         }
       }

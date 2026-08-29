@@ -38,11 +38,7 @@ class EmptyStateView extends StatelessWidget {
                   color: colors.secondary.withValues(alpha: 0.22),
                 ),
               ),
-              child: Icon(
-                icon,
-                size: 28,
-                color: colors.secondary,
-              ),
+              child: Icon(icon, size: 28, color: colors.secondary),
             ),
             const SizedBox(height: 16),
             Text(
@@ -54,10 +50,7 @@ class EmptyStateView extends StatelessWidget {
               const SizedBox(height: 8),
               Text(
                 subtitle!,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: colors.onSurfaceVariant,
-                ),
+                style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant),
                 textAlign: TextAlign.center,
               ),
             ],

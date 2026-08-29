@@ -98,11 +98,14 @@ jobs:
       - name: Prepare split Android release files
         shell: bash
         run: |
+          BUILD_TOOLS_DIR="$(ls -1d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          APKSIGNER="$BUILD_TOOLS_DIR/apksigner"
+          echo "Using apksigner: $APKSIGNER"
           for ABI in armeabi-v7a arm64-v8a x86_64; do
             SOURCE="build/app/outputs/flutter-apk/app-${ABI}-release.apk"
             APK="BearFuel-v${GITHUB_REF_NAME#v}-android-${ABI}-release.apk"
             test -f "$SOURCE"
-            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify "$SOURCE"
+            "$APKSIGNER" verify "$SOURCE"
             cp "$SOURCE" "$APK"
             sha256sum "$APK" > "${APK}.sha256"
           done
