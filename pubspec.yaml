@@ -2,10 +2,10 @@ name: bearfuel
 description: "类小熊油耗的专业级车辆油耗与用车成本管理应用"
 publish_to: 'none' # 私有应用，不发布到 pub.dev
 
-version: 0.2.11+22
+version: 0.2.13+24
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: '>=3.12.0 <4.0.0'
   flutter: ">=3.44.3"
 
 dependencies:
@@ -34,14 +34,19 @@ dependencies:
   file_picker: ^8.0.0
   share_plus: ^10.0.0
   path_provider: ^2.1.2
+  gbk_codec: ^0.4.0
 
   # 图标与 UI 增强
   lucide_icons_flutter: ^3.1.17
+  package_info_plus: ^9.0.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.0
+  flutter_lints: ^6.0.0
+  sqflite_common_ffi: ^2.4.2+1
 
 flutter:
   uses-material-design: true
+  assets:
+    - CHANGELOG.md

@@ -5,6 +5,7 @@ import '../../../data/services/amap_location_service.dart';
 import '../../../data/services/fuel_price_api_config.dart';
 import '../../../data/services/weather_api_config.dart';
 import '../../widgets/custom_card.dart';
+import 'about_section.dart';
 import 'amap_key_settings_screen.dart';
 import 'data_import_export_screen.dart';
 import 'fuel_price_api_settings_screen.dart';
@@ -25,14 +26,16 @@ class ServiceSettingsScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('连接与数据',
-                    style: Theme.of(context).textTheme.headlineMedium),
+                Text(
+                  '连接与数据',
+                  style: Theme.of(context).textTheme.headlineMedium,
+                ),
                 const SizedBox(height: 6),
                 Text(
                   '管理服务连接与本地数据。密钥仅保存在当前设备。',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),
@@ -68,7 +71,8 @@ class ServiceSettingsScreen extends StatelessWidget {
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(
-                  builder: (_) => const FuelPriceApiSettingsScreen()),
+                builder: (_) => const FuelPriceApiSettingsScreen(),
+              ),
             ),
           ),
           _ServiceTile(
@@ -84,7 +88,8 @@ class ServiceSettingsScreen extends StatelessWidget {
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(
-                  builder: (_) => const WeatherApiSettingsScreen()),
+                builder: (_) => const WeatherApiSettingsScreen(),
+              ),
             ),
           ),
           const _SettingsSectionHeader(
@@ -104,6 +109,9 @@ class ServiceSettingsScreen extends StatelessWidget {
               MaterialPageRoute(builder: (_) => const DataImportExportScreen()),
             ),
           ),
+
+          // 关于应用：版本 / 检查更新 / Release / 更新日志 / 构建与发布
+          const AboutSection(),
         ],
       ),
     );
@@ -188,22 +196,24 @@ class _ServiceTile extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Text(index,
-                          style: Theme.of(context)
-                              .textTheme
-                              .labelSmall
-                              ?.copyWith(color: color)),
+                      Text(
+                        index,
+                        style: Theme.of(
+                          context,
+                        ).textTheme.labelSmall?.copyWith(color: color),
+                      ),
                       const SizedBox(width: 7),
                       Expanded(
-                        child: Text(title,
-                            style: Theme.of(context).textTheme.titleMedium),
+                        child: Text(
+                          title,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
                       ),
                       Text(
                         status,
                         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                              color:
-                                  configured || optional ? color : colors.error,
-                            ),
+                          color: configured || optional ? color : colors.error,
+                        ),
                       ),
                     ],
                   ),
@@ -213,15 +223,18 @@ class _ServiceTile extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: colors.onSurfaceVariant,
-                        ),
+                      color: colors.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
             ),
             const SizedBox(width: 8),
-            Icon(AppIcons.chevron_right,
-                size: 17, color: colors.onSurfaceVariant),
+            Icon(
+              AppIcons.chevron_right,
+              size: 17,
+              color: colors.onSurfaceVariant,
+            ),
           ],
         ),
       ),

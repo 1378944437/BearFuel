@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 /// 环境类型枚举
 enum Environment {
   development, // 开发环境
@@ -28,10 +30,21 @@ class AppConfig {
   static String get databaseName =>
       isDevelopment ? 'bear_fuel_dev.db' : 'bear_fuel.db';
 
+  // ---------- 项目与发布信息（"关于应用"板块与检查更新共用） ----------
+  static const String githubRepoUrl = 'https://github.com/1378944437/BearFuel';
+  static const String githubReleasesUrl = '$githubRepoUrl/releases';
+  static const String githubLatestReleaseUrl = '$githubRepoUrl/releases/latest';
+  static const String githubActionsUrl = '$githubRepoUrl/actions';
+  static const String githubLatestReleaseApiUrl =
+      'https://api.github.com/repos/1378944437/BearFuel/releases/latest';
+
+  /// 一键发布流水线命令（升版 → 本地构建 → 推送触发远端构建）
+  static const String releaseCommand = 'bash scripts/release.sh';
+
   /// 日志级别控制
-  // Keep diagnostic output available in release builds; failures otherwise
-  // become impossible to investigate on self-signed devices.
-  static bool get enableDebugLog => true;
+  // 诊断日志仅在调试构建开启：Release 包不再向系统日志输出
+  // GPS 坐标、数据库路径等敏感信息。
+  static bool get enableDebugLog => kDebugMode;
 
   /// 默认货币符号
   static const String currencySymbol = '¥';
@@ -50,7 +63,7 @@ class AppConfig {
   /// 统一日志输出
   static void log(String message, {String tag = 'BearFuel'}) {
     if (enableDebugLog) {
-      // Release 也保留必要诊断日志，便于排查自签设备问题。
+      // ignore: avoid_print
       print('[$tag][${DateTime.now().toIso8601String()}] $message');
     }
   }

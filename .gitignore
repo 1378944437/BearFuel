@@ -35,6 +35,7 @@ migrate_working_dir/
 
 # BearFuel local tooling, personal fixtures, and release outputs
 /.agents/
+/.zcode/
 /小熊油耗csv实例/
 /*.apk
 /*.aab
