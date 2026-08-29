@@ -21,9 +21,18 @@ class MainNavigationScreen extends StatefulWidget {
 }
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
+  @override
+  void dispose() {
+    _navVisibleNotifier.dispose();
+    super.dispose();
+  }
+
   int _currentIndex = 0;
   DateTime? _lastBackTime;
   bool _isNavVisible = true;
+
+  /// 供子页面(如账本悬浮按钮)感知底栏显隐，避让未隐藏的底栏
+  final ValueNotifier<bool> _navVisibleNotifier = ValueNotifier<bool>(true);
 
   @override
   void initState() {
@@ -59,7 +68,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           setState(() => _currentIndex = 1);
         },
       ),
-      const RecordListScreen(),
+      RecordListScreen(navVisible: _navVisibleNotifier),
       const StatisticsScreen(),
       const VehicleManagementScreen(),
     ];
@@ -94,10 +103,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             if (notification.direction == ScrollDirection.reverse) {
               if (_isNavVisible) {
                 setState(() => _isNavVisible = false);
+                _navVisibleNotifier.value = false;
               }
             } else if (notification.direction == ScrollDirection.forward) {
               if (!_isNavVisible) {
                 setState(() => _isNavVisible = true);
+                _navVisibleNotifier.value = true;
               }
             }
             return false;

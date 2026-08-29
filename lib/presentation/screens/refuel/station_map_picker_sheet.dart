@@ -737,6 +737,7 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                     return Padding(
                       padding: const EdgeInsets.only(right: 6),
                       child: ChoiceChip(
+                        showCheckmark: false,
                         label: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -785,6 +786,7 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
                     return Padding(
                       padding: const EdgeInsets.only(right: 6),
                       child: ChoiceChip(
+                        showCheckmark: false,
                         label: Text(
                           brand,
                           style: const TextStyle(fontSize: 11),
@@ -1175,6 +1177,7 @@ class _StationMapPickerSheetState extends State<StationMapPickerSheet> {
           return Padding(
             padding: const EdgeInsets.only(right: 6),
             child: ChoiceChip(
+              showCheckmark: false,
               avatar: isSelected
                   ? const Icon(AppIcons.check, size: 11, color: Colors.white)
                   : null,

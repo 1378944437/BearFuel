@@ -1,4 +1,5 @@
 import 'package:bearfuel/core/theme/app_icons.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -18,7 +19,10 @@ import '../settings/service_settings_screen.dart';
 
 /// 历史明细账本流水页面（支持右下角悬浮搜索、迷你自定义时间、双项精简筛选栏与纯净左滑编辑删除）
 class RecordListScreen extends StatefulWidget {
-  const RecordListScreen({super.key});
+  /// 主导航底栏显隐通知：底栏可见时悬浮按钮需上移避让
+  final ValueListenable<bool> navVisible;
+
+  const RecordListScreen({super.key, required this.navVisible});
 
   @override
   State<RecordListScreen> createState() => _RecordListScreenState();
@@ -236,6 +240,7 @@ class _RecordListScreenState extends State<RecordListScreen>
                         children: ['全部', '92#', '95#', '98#', '柴油'].map((f) {
                           final isSel = tempFuel == f;
                           return ChoiceChip(
+                            showCheckmark: false,
                             label: Text(
                               f,
                               style: const TextStyle(fontSize: 12),
@@ -268,6 +273,7 @@ class _RecordListScreenState extends State<RecordListScreen>
                         children: ['全部', '仅加满', '未加满'].map((t) {
                           final isSel = tempTank == t;
                           return ChoiceChip(
+                            showCheckmark: false,
                             label: Text(
                               t,
                               style: const TextStyle(fontSize: 12),
@@ -300,6 +306,7 @@ class _RecordListScreenState extends State<RecordListScreen>
                         children: ['全部', '经济省油', '油耗偏高'].map((e) {
                           final isSel = tempEff == e;
                           return ChoiceChip(
+                            showCheckmark: false,
                             label: Text(
                               e,
                               style: const TextStyle(fontSize: 12),
@@ -327,6 +334,7 @@ class _RecordListScreenState extends State<RecordListScreen>
                       ),
                       const SizedBox(height: 6),
                       FilterChip(
+                        showCheckmark: false,
                         label: const Text(
                           '仅看有备注/优惠信息',
                           style: TextStyle(fontSize: 12),
@@ -463,6 +471,7 @@ class _RecordListScreenState extends State<RecordListScreen>
                     children: quickTimeList.map((t) {
                       final isSel = _selectedTimeRange == t;
                       return ChoiceChip(
+                        showCheckmark: false,
                         label: Text(
                           t,
                           style: TextStyle(
@@ -624,7 +633,9 @@ class _RecordListScreenState extends State<RecordListScreen>
         children: [
           TabBarView(
             controller: _tabController,
-            physics: const NeverScrollableScrollPhysics(),
+            // 允许左右滑动切换加油/其他费用；卡片自身的横向拖拽在
+            // 手势竞技场中优先级更高，互不冲突
+            physics: const ClampingScrollPhysics(),
             children: [
               _RefuelRecordListView(
                 searchQuery: _searchQuery,
@@ -661,10 +672,19 @@ class _RecordListScreenState extends State<RecordListScreen>
             ],
           ),
 
-          // 右下角固定悬停按钮组（贴合底栏收缩状态，留白适中）
-          Positioned(
-            right: 16,
-            bottom: 28,
+          // 右下角悬停按钮组：底栏未隐藏时上移避让，隐藏后贴边
+          ValueListenableBuilder<bool>(
+            valueListenable: widget.navVisible,
+            builder: (context, navVisible, child) {
+              final double bottomInset = MediaQuery.of(context).padding.bottom;
+              return AnimatedPositioned(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                right: 16,
+                bottom: navVisible ? bottomInset + 80 : 28,
+                child: child!,
+              );
+            },
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -1065,27 +1085,12 @@ class _RefuelRecordListView extends StatelessWidget {
                                 },
                                 onDelete: () async {
                                   HapticFeedback.lightImpact();
-                                  final confirm = await showDialog<bool>(
-                                    context: context,
-                                    builder: (ctx) => AlertDialog(
-                                      title: const Text('删除记录'),
-                                      content: const Text('确定要删除这笔加油记录吗？'),
-                                      actions: [
-                                        TextButton(
-                                          onPressed: () =>
-                                              Navigator.pop(ctx, false),
-                                          child: const Text('取消'),
-                                        ),
-                                        ElevatedButton(
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: Colors.red,
-                                          ),
-                                          onPressed: () =>
-                                              Navigator.pop(ctx, true),
-                                          child: const Text('删除'),
-                                        ),
-                                      ],
-                                    ),
+                                  final confirm = await _showDeleteConfirmDialog(
+                                    context,
+                                    title: '删除加油记录',
+                                    summary:
+                                        '${DateFormatter.formatYmdHm(r.refuelDate)} · ${r.fuelAmount.toStringAsFixed(2)}升 · ¥${r.totalPrice.toStringAsFixed(2)}'
+                                        '${(r.gasStation != null && r.gasStation!.isNotEmpty) ? "\n${r.gasStation}" : ""}',
                                   );
                                   if (confirm == true && context.mounted) {
                                     final deleted = r;
@@ -1374,6 +1379,72 @@ class _RefuelRecordListView extends StatelessWidget {
 }
 
 /// 高性能单向左滑卡片（纯净左滑调出编辑/删除，无右滑多选）
+/// 账本记录删除确认弹窗：品牌风格，展示记录摘要与撤销提示。
+Future<bool?> _showDeleteConfirmDialog(
+  BuildContext context, {
+  required String title,
+  required String summary,
+  String confirmLabel = '删除',
+}) {
+  return showDialog<bool>(
+    context: context,
+    builder: (ctx) {
+      final colors = Theme.of(ctx).colorScheme;
+      return AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: Colors.red.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                AppIcons.delete_outline,
+                color: Colors.red,
+                size: 18,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(child: Text(title, style: const TextStyle(fontSize: 16))),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(summary, style: const TextStyle(fontSize: 13, height: 1.5)),
+            const SizedBox(height: 8),
+            Text(
+              '删除后可在提示条中撤销恢复。',
+              style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(confirmLabel),
+          ),
+        ],
+      );
+    },
+  );
+}
+
 /// 账本左滑卡片协调器：同一时间只允许一张卡片处于滑开状态，
 /// 并支持在滚动开始或点击其他区域时统一收起。
 class _RefuelSwipeController {
@@ -2110,8 +2181,21 @@ class _SlidableRefuelItemCardState extends State<_SlidableRefuelItemCard>
 }
 
 /// 其它费用列表子视图
-class _ExpenseRecordListView extends StatelessWidget {
+class _ExpenseRecordListView extends StatefulWidget {
   const _ExpenseRecordListView();
+
+  @override
+  State<_ExpenseRecordListView> createState() => _ExpenseRecordListViewState();
+}
+
+class _ExpenseRecordListViewState extends State<_ExpenseRecordListView> {
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2150,6 +2234,10 @@ class _ExpenseRecordListView extends StatelessWidget {
     }
 
     return ListView.builder(
+      controller: _scrollController,
+      // AlwaysScrollable：内容不满一屏时拖动同样产生滚动方向通知，
+      // 保证底栏"上滑隐藏、下滑呼出"在费用页同样生效
+      physics: const AlwaysScrollableScrollPhysics(),
       scrollCacheExtent: const ScrollCacheExtent.pixels(600),
       padding: const EdgeInsets.only(top: 8, bottom: 24),
       itemCount: expenses.length,

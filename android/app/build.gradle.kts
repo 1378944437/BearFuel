@@ -80,8 +80,13 @@ android {
                 !signingKeyPassword.isNullOrBlank()) {
                 signingConfig = signingConfigs.getByName("release")
             }
-            isMinifyEnabled = false
-            isShrinkResources = false
+            // R8 代码收缩 + 资源收缩，显著减小安装包体积
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }
