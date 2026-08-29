@@ -60,9 +60,7 @@ class RefuelRecordModel {
       'discount_amount': discountAmount,
       'fuel_warning_light': fuelWarningLightOn == null
           ? null
-          : (fuelWarningLightOn!
-                ? 1
-                : 0),
+          : (fuelWarningLightOn! ? 1 : 0),
       'note': note,
       'fuel_consumption': fuelConsumption,
       'cost_per_km': costPerKm,

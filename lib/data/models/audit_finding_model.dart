@@ -78,9 +78,7 @@ class AuditFinding {
     'title': title,
     'explanation': explanation,
     'suggestion': suggestion,
-    'evidence_json': evidence == null
-        ? null
-        : jsonEncode(evidence),
+    'evidence_json': evidence == null ? null : jsonEncode(evidence),
     'suggested_changes_json': suggestedChanges.isEmpty
         ? null
         : jsonEncode(suggestedChanges),

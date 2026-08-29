@@ -276,13 +276,11 @@ class DatabaseHelper {
   }
 
   /// 读取最近的审查批次
-  Future<List<Map<String, dynamic>>> getRecentAuditRuns({int limit = 20}) async {
+  Future<List<Map<String, dynamic>>> getRecentAuditRuns({
+    int limit = 20,
+  }) async {
     final db = await database;
-    return db.query(
-      'audit_runs',
-      orderBy: 'created_at DESC',
-      limit: limit,
-    );
+    return db.query('audit_runs', orderBy: 'created_at DESC', limit: limit);
   }
 
   /// 落库一批发现：
@@ -301,7 +299,8 @@ class DatabaseHelper {
           final type = map['finding_type'] as String;
           final existing = await txn.query(
             'audit_findings',
-            where: 'finding_type = ? AND (record_id = ? OR (record_id IS NULL AND ? IS NULL))',
+            where:
+                'finding_type = ? AND (record_id = ? OR (record_id IS NULL AND ? IS NULL))',
             whereArgs: [type, recordId, recordId],
             limit: 1,
           );
@@ -355,9 +354,7 @@ class DatabaseHelper {
     final where = <String>[];
     final args = <Object?>[];
     if (statuses != null && statuses.isNotEmpty) {
-      where.add(
-        'status IN (${List.filled(statuses.length, '?').join(',')})',
-      );
+      where.add('status IN (${List.filled(statuses.length, '?').join(',')})');
       args.addAll(statuses);
     }
     if (recordId != null) {
@@ -406,7 +403,9 @@ class DatabaseHelper {
       {
         'status': status,
         'user_note': userNote,
-        'resolved_at': status == 'pending' ? null : DateTime.now().toIso8601String(),
+        'resolved_at': status == 'pending'
+            ? null
+            : DateTime.now().toIso8601String(),
       },
       where: 'id = ?',
       whereArgs: [findingId],
@@ -430,7 +429,10 @@ class DatabaseHelper {
     };
     if (severity != null) updates['severity'] = severity;
     if (model != null) {
-      await db.execute('UPDATE audit_runs SET model = ? WHERE id = (SELECT run_id FROM audit_findings WHERE id = ?)', [model, findingId]);
+      await db.execute(
+        'UPDATE audit_runs SET model = ? WHERE id = (SELECT run_id FROM audit_findings WHERE id = ?)',
+        [model, findingId],
+      );
     }
     await db.update(
       'audit_findings',
@@ -448,9 +450,7 @@ class DatabaseHelper {
     }
     if (oldVersion < 4) {
       // v4: 加油记录新增优惠金额/油量警告灯 + AI 审计结果表
-      final refuelCols = await db.rawQuery(
-        'PRAGMA table_info(refuel_records)',
-      );
+      final refuelCols = await db.rawQuery('PRAGMA table_info(refuel_records)');
       final names = refuelCols.map((c) => c['name'] as String).toSet();
       if (!names.contains('discount_amount')) {
         await db.execute(
@@ -1123,7 +1123,8 @@ class DatabaseHelper {
               number(row['fuel_consumption'], positive: true)) &&
           (row['cost_per_km'] == null ||
               number(row['cost_per_km'], positive: true)) &&
-          (row['distance'] == null || number(row['distance'], positive: true)) &&
+          (row['distance'] == null ||
+              number(row['distance'], positive: true)) &&
           (row['discount_amount'] == null ||
               number(row['discount_amount'], positive: false)) &&
           (row['fuel_warning_light'] == null ||

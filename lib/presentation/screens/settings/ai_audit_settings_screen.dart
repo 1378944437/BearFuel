@@ -23,6 +23,7 @@ class _AiAuditSettingsScreenState extends State<AiAuditSettingsScreen> {
 
   bool _obscureKey = true;
   bool _isTesting = false;
+  bool _isLoadingModels = false;
   String? _testResult;
   bool _testOk = false;
 
@@ -132,6 +133,166 @@ class _AiAuditSettingsScreenState extends State<AiAuditSettingsScreen> {
     _showMessage('已清除本机 AI 配置', Colors.orange);
   }
 
+  /// 从服务拉取模型列表并弹出选择
+  Future<void> _pickModelFromServer() async {
+    if (_isLoadingModels) return;
+    FocusScope.of(context).unfocus();
+    // 先暂存当前输入，保证 Base URL / Key 生效
+    await AiAuditConfigStore.save(
+      baseUrl: _baseUrlController.text.trim(),
+      apiKey: _apiKeyController.text.trim(),
+      model: _modelController.text.trim(),
+      serviceName: _serviceNameController.text.trim(),
+    );
+
+    setState(() => _isLoadingModels = true);
+    List<String> models;
+    try {
+      models = await AiAuditService.fetchModels();
+    } on AiServiceException catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoadingModels = false);
+      _showMessage(e.message, Colors.orange);
+      return;
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoadingModels = false);
+      _showMessage('获取模型列表失败：$e', Colors.red);
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _isLoadingModels = false);
+    await _showModelPicker(models);
+  }
+
+  Future<void> _showModelPicker(List<String> models) async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) {
+        final colors = Theme.of(sheetCtx).colorScheme;
+        final queryController = TextEditingController();
+        return DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          maxChildSize: 0.92,
+          minChildSize: 0.4,
+          expand: false,
+          builder: (innerCtx, scrollController) {
+            return StatefulBuilder(
+              builder: (innerCtx, setSheetState) {
+                final query = queryController.text.trim().toLowerCase();
+                final filtered = query.isEmpty
+                    ? models
+                    : models
+                          .where((m) => m.toLowerCase().contains(query))
+                          .toList();
+                return Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(sheetCtx).cardColor,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(20),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 10),
+                      Container(
+                        width: 36,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.grey.withValues(alpha: 0.4),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                        child: Row(
+                          children: [
+                            Text(
+                              '选择模型（${filtered.length}）',
+                              style: Theme.of(innerCtx).textTheme.titleMedium,
+                            ),
+                            const Spacer(),
+                            IconButton(
+                              icon: const Icon(AppIcons.close, size: 18),
+                              onPressed: () => Navigator.pop(sheetCtx),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: TextField(
+                          controller: queryController,
+                          onChanged: (_) => setSheetState(() {}),
+                          decoration: const InputDecoration(
+                            hintText: '搜索模型',
+                            prefixIcon: Icon(AppIcons.search, size: 18),
+                            isDense: true,
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Expanded(
+                        child: filtered.isEmpty
+                            ? Center(
+                                child: Text(
+                                  '没有匹配的模型',
+                                  style: TextStyle(
+                                    color: colors.onSurfaceVariant,
+                                  ),
+                                ),
+                              )
+                            : ListView.builder(
+                                controller: scrollController,
+                                itemCount: filtered.length,
+                                itemBuilder: (innerCtx, index) {
+                                  final model = filtered[index];
+                                  final isCurrent =
+                                      model == _modelController.text.trim();
+                                  return ListTile(
+                                    dense: true,
+                                    title: Text(
+                                      model,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: isCurrent
+                                            ? FontWeight.bold
+                                            : FontWeight.normal,
+                                        color: isCurrent
+                                            ? const Color(0xFFFF5A24)
+                                            : null,
+                                      ),
+                                    ),
+                                    trailing: isCurrent
+                                        ? const Icon(
+                                            AppIcons.check_circle,
+                                            size: 16,
+                                            color: Color(0xFFFF5A24),
+                                          )
+                                        : null,
+                                    onTap: () => Navigator.pop(sheetCtx, model),
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+    if (picked != null && picked.isNotEmpty && mounted) {
+      setState(() => _modelController.text = picked);
+      _showMessage('已选择模型：$picked（记得保存配置）', Colors.green);
+    }
+  }
+
   void _showMessage(String message, Color color) {
     ScaffoldMessenger.of(
       context,
@@ -213,12 +374,38 @@ class _AiAuditSettingsScreenState extends State<AiAuditSettingsScreen> {
                   controller: _modelController,
                   autocorrect: false,
                   inputFormatters: [AppInputFormatters.maxChars(80)],
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: '模型名称 *',
                     hintText: '如 gpt-4o-mini / deepseek-chat',
-                    prefixIcon: Icon(AppIcons.auto_awesome_outlined),
+                    prefixIcon: const Icon(AppIcons.auto_awesome_outlined),
+                    suffixIcon: _isLoadingModels
+                        ? const Padding(
+                            padding: EdgeInsets.all(12),
+                            child: SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          )
+                        : IconButton(
+                            icon: const Icon(
+                              AppIcons.keyboard_arrow_down,
+                              size: 18,
+                            ),
+                            tooltip: '获取模型列表',
+                            onPressed: _pickModelFromServer,
+                          ),
                   ),
                 ),
+                const SizedBox(height: 4),
+                Text(
+                  '可手动填写，或点击右侧按钮从服务获取模型列表',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 8),
                 const SizedBox(height: 16),
                 Row(
                   children: [

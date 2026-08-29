@@ -127,6 +127,84 @@ evidence 数组元素形如 {"field": "字段名", "record_value": 原值, "refe
     }
   }
 
+  /// 拉取服务商可用模型列表（OpenAI 兼容 GET /models）
+  static Future<List<String>> fetchModels() async {
+    if (!AiAuditConfigStore.hasBaseUrl) {
+      throw const AiServiceException('请先填写 Base URL');
+    }
+    if (!AiAuditConfigStore.hasApiKey) {
+      throw const AiServiceException('请先填写 API Key');
+    }
+    var base = AiAuditConfigStore.baseUrl.trim();
+    while (base.endsWith('/')) {
+      base = base.substring(0, base.length - 1);
+    }
+
+    HttpClient? client;
+    try {
+      client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+      final request = await client
+          .getUrl(Uri.parse('$base/models'))
+          .timeout(const Duration(seconds: 10));
+      request.headers.set(
+        HttpHeaders.authorizationHeader,
+        'Bearer ${AiAuditConfigStore.apiKey}',
+      );
+      final response = await request.close().timeout(
+        const Duration(seconds: 20),
+      );
+      final body = await response
+          .transform(utf8.decoder)
+          .join()
+          .timeout(const Duration(seconds: 20));
+
+      if (response.statusCode == HttpStatus.unauthorized) {
+        throw const AiServiceException('API Key 无效（401）');
+      }
+      if (response.statusCode == HttpStatus.notFound) {
+        throw const AiServiceException('该服务不提供模型列表接口（404），请手动填写模型名称');
+      }
+      if (response.statusCode == HttpStatus.tooManyRequests) {
+        throw const AiServiceException('请求过于频繁（429），请稍后再试');
+      }
+      if (response.statusCode != HttpStatus.ok) {
+        throw AiServiceException('服务返回 HTTP ${response.statusCode}');
+      }
+
+      final decoded = jsonDecode(body);
+      if (decoded is! Map<String, dynamic>) {
+        throw const AiServiceException('模型列表响应不是有效的 JSON 对象');
+      }
+      final data = decoded['data'];
+      if (data is! List) {
+        throw const AiServiceException('模型列表响应缺少 data 数组');
+      }
+      final ids =
+          data
+              .whereType<Map>()
+              .map((item) => item['id'])
+              .whereType<String>()
+              .where((id) => id.trim().isNotEmpty)
+              .toSet()
+              .toList()
+            ..sort();
+      if (ids.isEmpty) {
+        throw const AiServiceException('服务未返回任何模型');
+      }
+      return ids;
+    } on AiServiceException {
+      rethrow;
+    } on SocketException {
+      throw const AiServiceException('网络连接失败，请检查 Base URL 与网络');
+    } on TimeoutException {
+      throw const AiServiceException('连接超时，请稍后重试');
+    } catch (e) {
+      throw AiServiceException('获取模型列表失败：$e');
+    } finally {
+      client?.close(force: true);
+    }
+  }
+
   // ------------------------------------------------------------------
   // 底层对话调用
   // ------------------------------------------------------------------

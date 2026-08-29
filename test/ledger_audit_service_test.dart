@@ -74,7 +74,9 @@ void main() {
         ),
       ]);
       expect(
-        findings.where((f) => f.findingType == LedgerFindingType.amountMismatch),
+        findings.where(
+          (f) => f.findingType == LedgerFindingType.amountMismatch,
+        ),
         isEmpty,
       );
     });
@@ -111,7 +113,9 @@ void main() {
         isTrue,
       );
       expect(
-        findings.any((f) => f.findingType == LedgerFindingType.mileageDuplicate),
+        findings.any(
+          (f) => f.findingType == LedgerFindingType.mileageDuplicate,
+        ),
         isTrue,
       );
     });
@@ -136,25 +140,24 @@ void main() {
         ),
       ]);
       expect(
-        findings.where((f) => f.findingType == LedgerFindingType.duplicateRecord),
+        findings.where(
+          (f) => f.findingType == LedgerFindingType.duplicateRecord,
+        ),
         hasLength(1),
       );
     });
 
     test('加油量超过油箱容量 1.1 倍时提示', () {
-      final findings = run(
-        [
-          record(
-            id: 'big',
-            date: DateTime(2026, 8, 1),
-            mileage: 10000,
-            amount: 60,
-            price: 8,
-            total: 480,
-          ),
-        ],
-        tankCapacity: 50,
-      );
+      final findings = run([
+        record(
+          id: 'big',
+          date: DateTime(2026, 8, 1),
+          mileage: 10000,
+          amount: 60,
+          price: 8,
+          total: 480,
+        ),
+      ], tankCapacity: 50);
       expect(
         findings.any((f) => f.findingType == LedgerFindingType.tankOverflow),
         isTrue,
@@ -176,19 +179,16 @@ void main() {
         fetchedAt: DateTime(2026, 8, 28),
         sourceUrl: 'https://example.com',
       );
-      final findings = run(
-        [
-          record(
-            id: 'cheap',
-            date: DateTime(2026, 8, 25),
-            mileage: 10000,
-            amount: 40,
-            price: 7.20, // 与 7.79 相差 0.59
-            total: 288,
-          ),
-        ],
-        priceSnapshot: snapshot,
-      );
+      final findings = run([
+        record(
+          id: 'cheap',
+          date: DateTime(2026, 8, 25),
+          mileage: 10000,
+          amount: 40,
+          price: 7.20, // 与 7.79 相差 0.59
+          total: 288,
+        ),
+      ], priceSnapshot: snapshot);
       final finding = findings.firstWhere(
         (f) => f.findingType == LedgerFindingType.unitPriceDifference,
       );
@@ -308,10 +308,14 @@ void main() {
         price: 8,
         total: 320,
       );
-      expect(LedgerAuditService.hashRecord(a),
-          equals(LedgerAuditService.hashRecord(b)));
-      expect(LedgerAuditService.hashRecord(a),
-          isNot(equals(LedgerAuditService.hashRecord(c))));
+      expect(
+        LedgerAuditService.hashRecord(a),
+        equals(LedgerAuditService.hashRecord(b)),
+      );
+      expect(
+        LedgerAuditService.hashRecord(a),
+        isNot(equals(LedgerAuditService.hashRecord(c))),
+      );
     });
 
     test('正常账本不产生发现', () {
