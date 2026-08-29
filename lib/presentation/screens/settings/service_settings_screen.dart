@@ -45,7 +45,6 @@ class ServiceSettingsScreen extends StatelessWidget {
             title: '服务',
           ),
           _ServiceTile(
-            index: '01',
             icon: AppIcons.map_outlined,
             color: const Color(0xFFFF5A24),
             title: '地图服务',
@@ -59,7 +58,6 @@ class ServiceSettingsScreen extends StatelessWidget {
             ),
           ),
           _ServiceTile(
-            index: '02',
             icon: AppIcons.local_gas_station_outlined,
             color: const Color(0xFF007D83),
             title: '实时油价服务',
@@ -76,7 +74,6 @@ class ServiceSettingsScreen extends StatelessWidget {
             ),
           ),
           _ServiceTile(
-            index: '03',
             icon: AppIcons.cloud_outlined,
             color: const Color(0xFF1D7A52),
             title: '天气服务',
@@ -97,7 +94,6 @@ class ServiceSettingsScreen extends StatelessWidget {
             title: '备份',
           ),
           _ServiceTile(
-            index: '01',
             icon: AppIcons.import_export,
             color: const Color(0xFF6558D3),
             title: '数据导入与备份',
@@ -143,7 +139,6 @@ class _SettingsSectionHeader extends StatelessWidget {
 }
 
 class _ServiceTile extends StatelessWidget {
-  final String index;
   final IconData icon;
   final Color color;
   final String title;
@@ -154,7 +149,6 @@ class _ServiceTile extends StatelessWidget {
   final VoidCallback onTap;
 
   const _ServiceTile({
-    required this.index,
     required this.icon,
     required this.color,
     required this.title,
@@ -196,13 +190,6 @@ class _ServiceTile extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Text(
-                        index,
-                        style: Theme.of(
-                          context,
-                        ).textTheme.labelSmall?.copyWith(color: color),
-                      ),
-                      const SizedBox(width: 7),
                       Expanded(
                         child: Text(
                           title,

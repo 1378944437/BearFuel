@@ -85,11 +85,14 @@ class UpdateChecker {
           .join()
           .timeout(const Duration(seconds: 10));
       if (response.statusCode != HttpStatus.ok) {
-        return UpdateCheckResult(
-          errorMessage:
-              'GitHub 返回 HTTP '
-              '${response.statusCode}',
-        );
+        // 403：多为接口限流或网络拦截；404：仓库为私有或尚无 Release，
+        // 私有仓库无法匿名读取发布信息。
+        final message = response.statusCode == HttpStatus.forbidden
+            ? 'GitHub 接口请求受限（403），请稍后重试'
+            : response.statusCode == HttpStatus.notFound
+            ? '仓库为私有或暂无 Release，无法在线检查更新'
+            : 'GitHub 返回 HTTP ${response.statusCode}';
+        return UpdateCheckResult(errorMessage: message);
       }
       final decoded = jsonDecode(body);
       if (decoded is! Map<String, dynamic>) {

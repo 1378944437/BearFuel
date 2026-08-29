@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../widgets/app_date_picker.dart';
 import '../../../core/utils/validators.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../../core/utils/input_formatters.dart';
@@ -66,12 +67,12 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
   /// 选择费用发生日期
   Future<void> _pickDate() async {
-    final picked = await showDatePicker(
-      context: context,
+    final picked = await AppDatePicker.show(
+      context,
       initialDate: _selectedDate,
       firstDate: DateTime(2000),
       lastDate: DateTime.now().add(const Duration(days: 1)),
-      locale: const Locale('zh', 'CN'),
+      title: '选择费用日期',
     );
     if (picked != null) {
       setState(() => _selectedDate = picked);
@@ -80,13 +81,13 @@ class _AddExpenseScreenState extends State<AddExpenseScreen> {
 
   /// 选择下次到期提醒日期
   Future<void> _pickReminderDate() async {
-    final picked = await showDatePicker(
-      context: context,
+    final picked = await AppDatePicker.show(
+      context,
       initialDate:
           _reminderDate ?? DateTime.now().add(const Duration(days: 180)),
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365 * 5)),
-      locale: const Locale('zh', 'CN'),
+      title: '选择提醒日期',
     );
     if (picked != null) {
       setState(() => _reminderDate = picked);

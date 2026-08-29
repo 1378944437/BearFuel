@@ -3,6 +3,7 @@ import '../../core/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/utils/date_formatter.dart';
+import 'app_date_picker.dart';
 
 /// 非全屏迷你自定义日期范围拾取弹窗（尽可能少占用屏幕空间，快捷高效）
 class CompactDateRangeDialog extends StatefulWidget {
@@ -71,14 +72,12 @@ class _CompactDateRangeDialogState extends State<CompactDateRangeDialog> {
   Future<void> _pickDate({required bool isStart}) async {
     HapticFeedback.selectionClick();
     final initial = isStart ? _startDate : _endDate;
-    final picked = await showDatePicker(
-      context: context,
+    final picked = await AppDatePicker.show(
+      context,
       initialDate: initial,
       firstDate: widget.firstDate,
       lastDate: widget.lastDate,
-      helpText: isStart ? '选择起始日期' : '选择截止日期',
-      cancelText: '取消',
-      confirmText: '确定',
+      title: isStart ? '选择起始日期' : '选择截止日期',
     );
 
     if (picked != null && mounted) {

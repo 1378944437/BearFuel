@@ -822,6 +822,9 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                         enabled: true,
                         handleBuiltInTouches: true,
                         touchTooltipData: BarTouchTooltipData(
+                          // 气泡钳制在图表可视范围内，避免触点靠边时越界
+                          fitInsideHorizontally: true,
+                          fitInsideVertically: true,
                           getTooltipItem: (group, groupIndex, rod, rodIndex) {
                             final p = displayTempVsCons[group.x.toInt()];
                             return BarTooltipItem(
@@ -1500,6 +1503,9 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                   enabled: true,
                   handleBuiltInTouches: true,
                   touchTooltipData: LineTouchTooltipData(
+                    // 气泡钳制在图表可视范围内，避免触点靠边时越界
+                    fitInsideHorizontally: true,
+                    fitInsideVertically: true,
                     getTooltipColor: (_) => const Color(0xDE1A1A1A),
                     tooltipRoundedRadius: 8,
                     tooltipPadding: const EdgeInsets.symmetric(

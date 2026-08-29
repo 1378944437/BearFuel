@@ -1,17 +1,34 @@
-# Changelog
+# 更新日志
 
-BearFuel follows semantic versioning. Android build numbers increase for every
-published APK.
+BearFuel 遵循语义化版本。每个已发布的 Android APK 递增 build 号。
+
+## [0.2.14] - 2026-08-29
+
+### 新增
+
+- 全新应用内紧凑日期选择器：与品牌风格统一（周一首列、选中日品牌橙圆底、今日描边），替换系统默认日期弹窗，覆盖加油记账、费用记账、保养提醒与统计自定义范围。
+
+### 修复
+
+- 账本左滑后点击"编辑/删除"无效的问题：手势命中框未跟随卡片平移，导致滑开后按钮点击被卡片吞掉。
+- 账本左滑动画中卡片圆角与操作抽屉衔接处边角不协调的问题。
+- 统计与油价图表的触摸气泡在触点靠近边界时超出可视范围的问题。
+
+### 变更
+
+- 发布流程改为远端优先：删除本地发布脚本，推送 vX.Y.Z 标签即触发 GitHub Actions 构建并发布 Release；本地构建命令保留在文档与"构建与发布"说明中。
+- 移除"关于应用"中的 GitHub Release 地址入口（与"构建与发布"的打开发布页重复）；检查更新对接口限流（403）与私有仓库（404）给出明确提示。
+- 设置页列表项移除前方数字序号；更新日志（CHANGELOG.md）全部改为中文并随包内置。
 
 ## [0.2.13] - 2026-08-29
 
-### Added
+### 新增
 
-- “关于应用”设置板块：当前版本与 Build 号、GitHub Release 地址与检查更新、应用内更新日志、构建与发布入口。
+- "关于应用"设置板块：当前版本与 Build 号、GitHub Release 地址与检查更新、应用内更新日志、构建与发布入口。
 - 一键发布流水线 `scripts/release.sh`：一条命令完成升版（patch/minor/major）、本地构建（analyze + test + 分架构 Android APK，macOS 附带未签名 iOS IPA）与远端构建（提交、打 tag 并推送，触发 GitHub Actions 发布）。
 - 更新日志（CHANGELOG.md）随安装包打包，应用内可直接浏览历届版本变更。
 
-### Changed
+### 变更
 
 - README 重写：补充构建与发布流水线、产物矩阵（签名 APK×3 + 未签名 IPA）与签名配置说明。
 - Android Kotlin 插件升级至 2.2.0，适配 `package_info_plus` 及其依赖的 Kotlin 2.2 元数据。
@@ -19,73 +36,71 @@ published APK.
 
 ## [0.2.12] - 2026-08-29
 
-### Fixed
+### 修复
 
-- CSV export → import round trip no longer corrupts `总价`: the `每公里花费` header now maps to its own derived column instead of overwriting the total-price column (`_detectColumns` first-match-wins).
-- Partial-fill records no longer double-count mileage: period stats, ten-thousand-km stats, the 365-day heatmap, and overview distance now aggregate only completed measurement cycles.
-- Append-mode CSV import now detects duplicates (same vehicle + minute + mileage) and reports "imported N, skipped M duplicates" instead of silently duplicating history.
-- Record ledger custom date range actually filters records now; "全部时间" no longer hides future-dated records; statistics custom range no longer leaks the day before the start date.
-- Save buttons in add-refuel and add-expense forms are debounced with a busy state, preventing duplicate records from double taps.
-- Overwrite import now asks for explicit confirmation (showing the number of records that will be erased).
-- Trip statistics group by full date instead of MM-dd, so same-month days from different years no longer merge.
-- Left-swiped ledger card can be dismissed again by tapping the card, swiping right, scrolling, or opening another card's actions.
-- Chart axes: adaptive nice intervals and sparse X labels across trend/temperature/price charts fix crowded or overlapping axis text.
-- City search now covers all ~340 Chinese prefecture-level cities with pinyin/initials matching; the sheet no longer auto-requests GPS permission on open and compensates for keyboard insets.
-- Network response bodies now read with timeouts across location, AMap, ApiZero price/forecast, and Moji weather services; platform geocoding is bounded so "locating" can no longer hang forever.
-- Station search re-queries with the latest location after an in-flight request instead of dropping it; dashboard marquee no longer stacks two scroll loops; date-range dialog guards setState after dispose; license-plate field reacts to `initialPlate` changes.
-- Deleting the last vehicle clears stale refuel/expense provider state; vehicle dialog text controllers are disposed on close.
+- CSV 导出→导入往返不再损坏"总价"：表头"每公里花费"改挂独立派生列，不再抢占总价列（列匹配改为首匹配生效）。
+- 部分加油（未加满）记录不再重复计入里程：周期统计、万公里统计、365 天热力图与总览里程均只累计完成测量周期的里程。
+- 追加模式导入 CSV 自动按"同车 + 同一分钟 + 同里程"去重，并提示"导入 N 条、跳过 M 条重复"，不再把历史翻倍。
+- 账本"自定义"时间范围真正生效；"全部时间"不再隐藏补录的未来日期记录；统计自定义范围不再漏进起始日的前一天数据。
+- 加油/费用记账保存按钮增加防抖与加载态，杜绝连点产生重复记录。
+- 覆盖导入前增加二次确认（提示将被清空的记录数）。
+- 行程统计按完整日期分组，不再把不同年份的同月同日合并。
+- 账本左滑卡片可再次退出：点击卡片、右滑、滚动或滑开其他卡片均可收起。
+- 图表坐标轴：趋势图/温度图/油价图统一采用自适应刻度与抽稀标签，修复横纵坐标拥挤与标签重叠。
+- 城市搜索覆盖全国约 340 个地级市（支持中文/省份/全拼/首字母）；城市面板不再自动弹 GPS 权限，键盘弹出不再遮挡内容。
+- 定位、高德、ApiZero 油价/预测、墨迹天气等网络响应体读取全部加超时，平台逆地理编码限时 6 秒，杜绝"正在定位"永久悬挂。
+- 加油站搜索请求结束后会用最新定位补查；仪表盘跑马灯不再叠加双循环；日期范围弹窗补 mounted 守卫；车牌控件响应 initialPlate 变化。
+- 删除最后一辆车后清空残留的记录状态；车辆弹窗关闭时释放输入控制器。
 
-### Changed
+### 变更
 
-- Release builds no longer print GPS coordinates or database paths to system logs (`enableDebugLog` follows `kDebugMode`).
-- Vehicle insert/update use `ConflictAlgorithm.abort` instead of `replace`, eliminating a latent cascade-delete trap; full-backup export reads all four tables inside a single transaction; database lazy init is future-memoized.
-- Unifies hardcoded brand colors in city picker, license-plate field, and date dialog onto `AppBrandColors`; fixed collapsed `AppRadius` tokens; added accessibility labels to the plate input controls.
-- Android `targetSdk` raised to 35 with release lint re-enabled; pubspec Dart lower bound aligned with reality and `flutter_lints` upgraded to 6; release workflow resolves build-tools dynamically; CI adds an iOS debug compile job.
-- Bumped version to `0.2.12+23`.
+- Release 包不再向系统日志输出 GPS 坐标与数据库路径（日志跟随 kDebugMode）。
+- 车辆写入改用 abort 冲突策略，消除级联清空陷阱；全量备份导出改为单事务快照；数据库懒初始化 Future 记忆化。
+- 三大组件硬编码品牌色统一到语义 token；修正 AppRadius 撞值；车牌控件补齐无障碍标签。
+- Android targetSdk 升至 35 并恢复 release lint；pubspec Dart 下限对齐实际、flutter_lints 升至 6；release 工作流动态解析 build-tools；CI 增加 iOS 编译验证。
+- 升版至 `0.2.12+23`。
 
 ## [0.2.11] - 2026-08-28
 
-- Completed remaining audit optimizations and follow-up fixes.
-- Normalized Dart formatting and fixed an analyzer warning.
+- 完成剩余审计优化与后续修复。
+- 统一 Dart 格式化并修复分析器告警。
 
 ## [0.2.10] - 2026-08-28
 
-- Fixed empty-backup validation, city-to-province mapping, CSV round trips, and vehicle-switch failure handling.
-- Added iOS external-link handling and improved weather chart data ranges.
-- Normalized CI formatting and analyzer checks.
+- 修复空备份校验、城市到省份映射、CSV 往返与车辆切换失败处理。
+- 新增 iOS 外链处理，改进天气图表数据范围。
+- 规范 CI 格式检查与分析器配置。
 
 ## [0.2.9] - 2026-08-28
 
-- Restored permanent release signing and signature verification for split Android APKs.
-- Removed retired report sharing, PDF export, and unused UI components.
-- Rewrote the GitHub project documentation and removed obsolete local artifacts.
+- 恢复永久发布签名与分架构 APK 签名校验。
+- 移除已废弃的报告分享、PDF 导出与无用 UI 组件。
+- 重写 GitHub 项目文档并清理过时本地产物。
 
 ## [0.2.8] - 2026-08-28
 
-- Fixed the last-known map location distance using a hardcoded Jingmen coordinate.
-- Fixed record time-range boundaries, weather snapshot fallback, and forecast cold-start rate limiting.
-- Fixed stale backup version metadata, swallowed calculation write failures, and missing cached-price labeling.
-- Release automation builds unsigned split Android APKs and an unsigned iOS IPA.
-
-## [0.2.6] - 2026-08-28
-
-- Updated release automation to publish Android all-architecture APK and iOS unsigned IPA only.
-- Removed the first-run application identifier migration notice.
-- Raised Android version to `0.2.6+17`.
+- 修复最后已知地图位置使用硬编码荆门坐标的问题。
+- 修复记录时间范围边界、天气快照回退与调价预测冷启动限频。
+- 修复备份版本元数据过期、计算回写失败被吞与缓存油价未标注。
+- 发布自动化改为输出未签名分架构 Android APK 与未签名 iOS IPA。
 
 ## [0.2.7] - 2026-08-28
 
-- Published separate Android APKs for `armeabi-v7a`, `arm64-v8a`, and `x86_64`.
-- Divided settings into service and backup sections.
-- Raised Android version to `0.2.7+18`.
+- 发布 `armeabi-v7a`、`arm64-v8a`、`x86_64` 独立 APK。
+- 设置拆分为服务与备份两个板块。
+- Android 版本升至 `0.2.7+18`。
+
+## [0.2.6] - 2026-08-28
+
+- 发布自动化改为仅输出 Android 全架构 APK 与 iOS 未签名 IPA。
+- 移除首次运行的应用标识迁移提示。
+- Android 版本升至 `0.2.6+17`。
 
 ## [0.2.5] - 2026-08-28
 
-- Rebuilt the application UI around a shared light and dark design system.
-- Migrated all visible application icons to Lucide and removed emoji from UI.
-- Improved dashboard, navigation, settings, fuel-price, and station-picker UI.
-- Kept the Android release target limited to `arm64-v8a` by default.
-- Added a permanent self-managed Android release-signing configuration.
-- Added GitHub CI and tag-driven release automation.
-
-[0.2.5]: https://github.com/1378944437/BearFuel/releases/tag/v0.2.5
+- 以共享的明暗设计系统重建应用界面。
+- 全部可见图标迁移至 Lucide 并移除表情符号。
+- 优化仪表盘、导航、设置、油价与选站界面。
+- Android 发布目标默认保留 `arm64-v8a`。
+- 新增永久自管 Android 发布签名配置。
+- 新增 GitHub CI 与标签驱动的发布自动化。

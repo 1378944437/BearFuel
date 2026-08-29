@@ -12,6 +12,7 @@ import '../../../data/models/refuel_record_model.dart';
 import '../../../providers/vehicle_provider.dart';
 import '../../../providers/refuel_provider.dart';
 import 'station_map_picker_sheet.dart';
+import '../../widgets/app_date_picker.dart';
 
 /// BearFuel 记录加油页面（支持双向联动换算、里程快捷增量与触感反馈）
 class AddRefuelScreen extends StatefulWidget {
@@ -158,12 +159,12 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
   /// 选择日期时间
   Future<void> _pickDateTime() async {
     HapticFeedback.selectionClick();
-    final pickedDate = await showDatePicker(
-      context: context,
+    final pickedDate = await AppDatePicker.show(
+      context,
       initialDate: _selectedDate,
       firstDate: DateTime(2000),
       lastDate: DateTime.now().add(const Duration(days: 1)),
-      locale: const Locale('zh', 'CN'),
+      title: '选择加油日期',
     );
 
     if (pickedDate != null && mounted) {

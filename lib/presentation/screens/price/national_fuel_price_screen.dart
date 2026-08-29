@@ -848,6 +848,9 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
                   enabled: true,
                   handleBuiltInTouches: true,
                   touchTooltipData: LineTouchTooltipData(
+                    // 气泡钳制在图表可视范围内，避免触点靠边时越界
+                    fitInsideHorizontally: true,
+                    fitInsideVertically: true,
                     getTooltipColor: (_) => const Color(0xDE1A1A1A),
                     getTooltipItems: (spots) {
                       return spots.map((spot) {

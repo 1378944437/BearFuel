@@ -41,22 +41,6 @@ class AboutSection extends StatelessWidget {
           onTap: () => _runUpdateCheck(context),
         ),
         _AboutTile(
-          icon: AppIcons.open_in_new,
-          color: const Color(0xFF007D83),
-          title: 'GitHub Release 地址',
-          subtitle: AppConfig.githubLatestReleaseUrl,
-          onTap: () async {
-            final ok = await ExternalUrlLauncher.open(
-              AppConfig.githubLatestReleaseUrl,
-            );
-            if (context.mounted && !ok) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('无法打开外部链接，请手动访问 Releases 页面')),
-              );
-            }
-          },
-        ),
-        _AboutTile(
           icon: AppIcons.menu_book_outlined,
           color: const Color(0xFF6558D3),
           title: '更新日志',
@@ -67,7 +51,7 @@ class AboutSection extends StatelessWidget {
           icon: AppIcons.build_circle_outlined,
           color: const Color(0xFFFF5A24),
           title: '构建与发布',
-          subtitle: '升版 → 本地构建 → 推送触发远端构建，一键完成',
+          subtitle: '推送版本标签触发远端构建，自动发布 Release',
           onTap: () => _showReleasePipelineSheet(context),
         ),
       ],
@@ -219,12 +203,6 @@ class AboutSection extends StatelessWidget {
                           style: Theme.of(sheetCtx).textTheme.titleLarge,
                         ),
                         const Spacer(),
-                        TextButton(
-                          onPressed: () => ExternalUrlLauncher.open(
-                            AppConfig.githubReleasesUrl,
-                          ),
-                          child: const Text('在 GitHub 查看'),
-                        ),
                       ],
                     ),
                   ),
@@ -347,7 +325,7 @@ class AboutSection extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '一条命令同时完成升版、本地构建与远端 GitHub 构建：',
+                  '发布以远端构建为主，推送版本标签即可自动完成：',
                   style: TextStyle(
                     fontSize: 12,
                     color: colors.onSurfaceVariant,
@@ -358,23 +336,23 @@ class AboutSection extends StatelessWidget {
                   index: '1',
                   title: '升版',
                   description:
-                      '自动提升 pubspec.yaml 版本与 build 号（支持 patch/minor/major），'
-                      '并在 CHANGELOG.md 生成对应条目。',
+                      '更新 pubspec.yaml 的版本与 build 号，并在 CHANGELOG.md 写入本版变更说明。',
                 ),
                 const _PipelineStep(
                   index: '2',
-                  title: '本地构建',
+                  title: '推送版本标签（远端构建）',
                   description:
-                      '运行 analyze 与 test 后构建分架构 Android APK'
-                      '（armeabi-v7a / arm64-v8a / x86_64，检测到发布密钥时自动签名）；'
-                      'macOS 上同时产出未签名 iOS IPA，Windows 上 iOS 交由远端构建。',
+                      '提交后推送 vX.Y.Z 标签，GitHub Actions 自动构建'
+                      '签名 APK×3（armeabi-v7a / arm64-v8a / x86_64）+ 未签名 iOS IPA，'
+                      '并发布 GitHub Release。',
                 ),
                 const _PipelineStep(
                   index: '3',
-                  title: '远端构建',
+                  title: '本地构建（可选）',
                   description:
-                      '提交版本、打 vTag 并推送，GitHub Actions 自动构建'
-                      '签名 APK×3 + 未签名 iOS IPA 并发布 GitHub Release。',
+                      '发布前自验或离线安装时，可本地构建分架构 Android APK'
+                      '（flutter build apk --release --split-per-abi，'
+                      '检测到发布密钥时自动签名）。',
                 ),
                 const SizedBox(height: 10),
                 Container(

@@ -1582,42 +1582,52 @@ class _SlidableRefuelItemCardState extends State<_SlidableRefuelItemCard>
           ),
 
           // 2. 表层主卡片（仅允许向左拖拽；滑开后仍可点击/右滑收回）
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onHorizontalDragUpdate: (details) {
-              setState(() {
-                _dragOffset += details.primaryDelta!;
-                // 仅允许左滑（负偏移），禁止右滑（最大为 0.0）
-                _dragOffset = _dragOffset.clamp(-_actionWidth, 0.0);
-              });
-            },
-            onHorizontalDragEnd: (details) {
-              if (_dragOffset < -45) {
-                // 左滑超过阈值：露出右侧编辑与删除抽屉，并收起其他已滑开的卡片
-                HapticFeedback.lightImpact();
-                widget.onOperated?.call();
-                swipeController.opened(this);
-                _animateTo(-_actionWidth);
-              } else {
-                swipeController.closed(this);
-                _resetPosition();
-              }
-            },
-            onTap: () {
-              if (_dragOffset != 0) {
-                // 已滑开时点击卡片任意位置收回
-                swipeController.closed(this);
-                _resetPosition();
-              } else {
-                _showRefuelDetailSheet(context, r, widget.globalAvgConsumption);
-              }
-            },
-            child: Transform.translate(
-              offset: Offset(_dragOffset, 0),
+          //   Transform 必须在 GestureDetector 外层：命中区域才会跟随卡片平移，
+          //   否则未平移的整行命中框会吞掉右侧"编辑/删除"按钮的点击。
+          Transform.translate(
+            offset: Offset(_dragOffset, 0),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onHorizontalDragUpdate: (details) {
+                setState(() {
+                  _dragOffset += details.primaryDelta!;
+                  // 仅允许左滑（负偏移），禁止右滑（最大为 0.0）
+                  _dragOffset = _dragOffset.clamp(-_actionWidth, 0.0);
+                });
+              },
+              onHorizontalDragEnd: (details) {
+                if (_dragOffset < -45) {
+                  // 左滑超过阈值：露出右侧编辑与删除抽屉，并收起其他已滑开的卡片
+                  HapticFeedback.lightImpact();
+                  widget.onOperated?.call();
+                  swipeController.opened(this);
+                  _animateTo(-_actionWidth);
+                } else {
+                  swipeController.closed(this);
+                  _resetPosition();
+                }
+              },
+              onTap: () {
+                if (_dragOffset != 0) {
+                  // 已滑开时点击卡片任意位置收回
+                  swipeController.closed(this);
+                  _resetPosition();
+                } else {
+                  _showRefuelDetailSheet(
+                    context,
+                    r,
+                    widget.globalAvgConsumption,
+                  );
+                }
+              },
               child: Card(
                 margin: EdgeInsets.zero,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                elevation: 0,
+                shape: const RoundedRectangleBorder(
+                  // 右侧直角：滑动时与抽屉保持平直拼缝，整体圆角由外层容器裁剪
+                  borderRadius: BorderRadius.horizontal(
+                    left: Radius.circular(12),
+                  ),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(12.0),

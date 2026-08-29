@@ -38,8 +38,13 @@ class AppConfig {
   static const String githubLatestReleaseApiUrl =
       'https://api.github.com/repos/1378944437/BearFuel/releases/latest';
 
-  /// 一键发布流水线命令（升版 → 本地构建 → 推送触发远端构建）
-  static const String releaseCommand = 'bash scripts/release.sh';
+  /// 远端优先发布命令：推送 vX.Y.Z 标签即触发 GitHub Actions 构建并发布 Release
+  static const String releaseCommand =
+      'git tag v0.2.15 && git push origin main v0.2.15';
+
+  /// 本地构建命令（可选，用于发布前自验或离线安装）
+  static const String localBuildCommand =
+      'flutter build apk --release --split-per-abi';
 
   /// 日志级别控制
   // 诊断日志仅在调试构建开启：Release 包不再向系统日志输出
