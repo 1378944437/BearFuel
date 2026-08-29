@@ -8,6 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../../data/models/refuel_record_model.dart';
 import '../../../providers/refuel_provider.dart';
+import '../../../providers/audit_provider.dart';
+import '../../../data/models/audit_finding_model.dart';
 import '../../../providers/expense_provider.dart';
 import '../../../providers/vehicle_provider.dart';
 import '../../../presentation/widgets/empty_state_view.dart';
@@ -2005,6 +2007,48 @@ class _SlidableRefuelItemCardState extends State<_SlidableRefuelItemCard>
                 ),
               ),
               const SizedBox(height: 16),
+              // 账本审查发现提示
+              FutureBuilder<List<AuditFinding>>(
+                future: context.read<AuditProvider>().findingsForRecord(r.id),
+                builder: (context, snapshot) {
+                  final pendingFindings =
+                      snapshot.data?.where((f) => f.isPending).toList() ??
+                      const <AuditFinding>[];
+                  if (pendingFindings.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: Colors.orange.withValues(alpha: 0.35),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          AppIcons.warning_amber_rounded,
+                          size: 16,
+                          color: Colors.orange,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '此记录存在 ${pendingFindings.length} 项待确认问题（账本审查）',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.orange,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [

@@ -55,7 +55,7 @@ class DatabaseHelper {
 
       final db = await openDatabase(
         path,
-        version: 3,
+        version: 4,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onConfigure: (db) async {
@@ -126,6 +126,25 @@ class DatabaseHelper {
     if (weatherTables.isEmpty) {
       await _createWeatherSnapshotTable(db);
     }
+
+    // 加油记录新列自愈（优惠金额/油量警告灯）
+    final refuelCols = await db.rawQuery('PRAGMA table_info(refuel_records)');
+    final refuelColNames = refuelCols.map((c) => c['name'] as String).toSet();
+    if (refuelColNames.contains('mileage')) {
+      if (!refuelColNames.contains('discount_amount')) {
+        await db.execute(
+          'ALTER TABLE refuel_records ADD COLUMN discount_amount REAL',
+        );
+      }
+      if (!refuelColNames.contains('fuel_warning_light')) {
+        await db.execute(
+          'ALTER TABLE refuel_records ADD COLUMN fuel_warning_light INTEGER',
+        );
+      }
+    }
+
+    // 审计表自愈
+    await _createAuditTables(db);
   }
 
   /// 创建数据表结构
@@ -162,6 +181,8 @@ class DatabaseHelper {
         gas_station TEXT,
         is_full_tank INTEGER NOT NULL DEFAULT 1,
         is_forgot_previous INTEGER NOT NULL DEFAULT 0,
+        discount_amount REAL,
+        fuel_warning_light INTEGER,
         note TEXT,
         fuel_consumption REAL,
         cost_per_km REAL,
@@ -189,6 +210,7 @@ class DatabaseHelper {
     ''');
 
     await _createWeatherSnapshotTable(db);
+    await _createAuditTables(db);
 
     // 创建必要索引以加速按车辆和时间排序查询
     await db.execute(
@@ -216,12 +238,273 @@ class DatabaseHelper {
     AppConfig.log('数据库表及默认车辆创建完成！');
   }
 
+  // ==================== AI 账本审查：批次与发现 ====================
+
+  /// 新建审查批次
+  Future<void> insertAuditRun(Map<String, dynamic> runMap) async {
+    try {
+      final db = await database;
+      await db.insert('audit_runs', runMap);
+    } catch (e) {
+      AppConfig.log('写入审查批次失败: $e');
+      rethrow;
+    }
+  }
+
+  /// 更新审查批次状态
+  Future<void> updateAuditRun(
+    String runId, {
+    required String status,
+    DateTime? completedAt,
+    String? errorMessage,
+  }) async {
+    try {
+      final db = await database;
+      await db.update(
+        'audit_runs',
+        {
+          'status': status,
+          'completed_at': completedAt?.toIso8601String(),
+          'error_message': errorMessage,
+        },
+        where: 'id = ?',
+        whereArgs: [runId],
+      );
+    } catch (e) {
+      AppConfig.log('更新审查批次失败: $e');
+    }
+  }
+
+  /// 读取最近的审查批次
+  Future<List<Map<String, dynamic>>> getRecentAuditRuns({int limit = 20}) async {
+    final db = await database;
+    return db.query(
+      'audit_runs',
+      orderBy: 'created_at DESC',
+      limit: limit,
+    );
+  }
+
+  /// 落库一批发现：
+  /// - 同一 (record_id, finding_type) 且数据指纹一致 → 跳过，不重复生成
+  /// - 指纹变化 → 覆盖内容并重置为待确认（数据已变化，需要重新审查）
+  Future<int> upsertAuditFindings(
+    String runId,
+    List<Map<String, dynamic>> findingMaps,
+  ) async {
+    int inserted = 0;
+    try {
+      final db = await database;
+      await db.transaction((txn) async {
+        for (final map in findingMaps) {
+          final recordId = map['record_id'] as String?;
+          final type = map['finding_type'] as String;
+          final existing = await txn.query(
+            'audit_findings',
+            where: 'finding_type = ? AND (record_id = ? OR (record_id IS NULL AND ? IS NULL))',
+            whereArgs: [type, recordId, recordId],
+            limit: 1,
+          );
+          if (existing.isEmpty) {
+            await txn.insert('audit_findings', map);
+            inserted++;
+            continue;
+          }
+          final old = existing.first;
+          if (old['data_hash'] == map['data_hash'] &&
+              old['status'] != 'resolved') {
+            // 同一批数据、同样结论：保留用户处理状态，不重复提醒
+            continue;
+          }
+          await txn.update(
+            'audit_findings',
+            {
+              'run_id': map['run_id'],
+              'severity': map['severity'],
+              'title': map['title'],
+              'explanation': map['explanation'],
+              'suggestion': map['suggestion'],
+              'evidence_json': map['evidence_json'],
+              'suggested_changes_json': map['suggested_changes_json'],
+              'confidence': map['confidence'],
+              'status': 'pending',
+              'data_hash': map['data_hash'],
+              'created_at': map['created_at'],
+              'resolved_at': null,
+            },
+            where: 'id = ?',
+            whereArgs: [old['id']],
+          );
+          inserted++;
+        }
+      });
+      return inserted;
+    } catch (e) {
+      AppConfig.log('写入审查发现失败: $e');
+      rethrow;
+    }
+  }
+
+  /// 查询审查发现
+  Future<List<Map<String, dynamic>>> getAuditFindings({
+    List<String>? statuses,
+    String? recordId,
+    int? limit,
+  }) async {
+    final db = await database;
+    final where = <String>[];
+    final args = <Object?>[];
+    if (statuses != null && statuses.isNotEmpty) {
+      where.add(
+        'status IN (${List.filled(statuses.length, '?').join(',')})',
+      );
+      args.addAll(statuses);
+    }
+    if (recordId != null) {
+      where.add('record_id = ?');
+      args.add(recordId);
+    }
+    return db.query(
+      'audit_findings',
+      where: where.isEmpty ? null : where.join(' AND '),
+      whereArgs: args,
+      orderBy: 'created_at DESC',
+      limit: limit,
+    );
+  }
+
+  /// 待确认发现数量与最高级别
+  Future<Map<String, dynamic>> getAuditSummary() async {
+    final db = await database;
+    final rows = await db.rawQuery(
+      "SELECT severity, COUNT(*) AS n FROM audit_findings "
+      "WHERE status = 'pending' GROUP BY severity",
+    );
+    var count = 0;
+    var highest = 'info';
+    for (final row in rows) {
+      final n = (row['n'] as int?) ?? 0;
+      count += n;
+      final severity = row['severity'] as String? ?? 'info';
+      if (severity == 'critical' ||
+          (severity == 'warning' && highest == 'info')) {
+        highest = severity;
+      }
+    }
+    return {'count': count, 'highest_severity': highest};
+  }
+
+  /// 更新发现状态（处理/忽略），可附用户备注
+  Future<void> updateAuditFindingStatus(
+    String findingId, {
+    required String status,
+    String? userNote,
+  }) async {
+    final db = await database;
+    await db.update(
+      'audit_findings',
+      {
+        'status': status,
+        'user_note': userNote,
+        'resolved_at': status == 'pending' ? null : DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [findingId],
+    );
+  }
+
+  /// 更新发现的 AI 解释结果（不改变用户处理状态）
+  Future<void> updateAuditFindingAiResult(
+    String findingId, {
+    required String explanation,
+    String? suggestion,
+    String? confidence,
+    String? severity,
+    String? model,
+  }) async {
+    final db = await database;
+    final updates = <String, dynamic>{
+      'explanation': explanation,
+      'suggestion': suggestion,
+      'confidence': confidence,
+    };
+    if (severity != null) updates['severity'] = severity;
+    if (model != null) {
+      await db.execute('UPDATE audit_runs SET model = ? WHERE id = (SELECT run_id FROM audit_findings WHERE id = ?)', [model, findingId]);
+    }
+    await db.update(
+      'audit_findings',
+      updates,
+      where: 'id = ?',
+      whereArgs: [findingId],
+    );
+  }
+
   /// 数据库版本升级迁移策略
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     AppConfig.log('数据库版本升级: $oldVersion -> $newVersion');
     if (oldVersion < 3) {
       await _createWeatherSnapshotTable(db);
     }
+    if (oldVersion < 4) {
+      // v4: 加油记录新增优惠金额/油量警告灯 + AI 审计结果表
+      final refuelCols = await db.rawQuery(
+        'PRAGMA table_info(refuel_records)',
+      );
+      final names = refuelCols.map((c) => c['name'] as String).toSet();
+      if (!names.contains('discount_amount')) {
+        await db.execute(
+          'ALTER TABLE refuel_records ADD COLUMN discount_amount REAL',
+        );
+      }
+      if (!names.contains('fuel_warning_light')) {
+        await db.execute(
+          'ALTER TABLE refuel_records ADD COLUMN fuel_warning_light INTEGER',
+        );
+      }
+      await _createAuditTables(db);
+    }
+  }
+
+  /// AI 账本审查相关表
+  Future<void> _createAuditTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS audit_runs (
+        id TEXT PRIMARY KEY,
+        vehicle_id TEXT,
+        trigger_type TEXT NOT NULL,
+        data_hash TEXT NOT NULL,
+        model TEXT,
+        prompt_version TEXT,
+        status TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        completed_at TEXT,
+        error_message TEXT
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS audit_findings (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL,
+        record_id TEXT,
+        finding_type TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        title TEXT NOT NULL,
+        explanation TEXT NOT NULL,
+        suggestion TEXT,
+        evidence_json TEXT,
+        suggested_changes_json TEXT,
+        confidence TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        user_note TEXT,
+        data_hash TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        resolved_at TEXT
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_audit_findings_record ON audit_findings (record_id, status)',
+    );
   }
 
   Future<void> _createWeatherSnapshotTable(Database db) async {
@@ -840,7 +1123,11 @@ class DatabaseHelper {
               number(row['fuel_consumption'], positive: true)) &&
           (row['cost_per_km'] == null ||
               number(row['cost_per_km'], positive: true)) &&
-          (row['distance'] == null || number(row['distance'], positive: true));
+          (row['distance'] == null || number(row['distance'], positive: true)) &&
+          (row['discount_amount'] == null ||
+              number(row['discount_amount'], positive: false)) &&
+          (row['fuel_warning_light'] == null ||
+              flag(row['fuel_warning_light']));
     }
 
     bool validExpense(Map<String, dynamic> row) {

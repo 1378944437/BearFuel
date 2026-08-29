@@ -71,7 +71,9 @@ void main() {
       final exportedCsv = BearFuelImporter.exportToCsv(computed);
       expect(
         exportedCsv,
-        contains('时间,当前里程,加油量,单价,金额,是否加满,是否漏记,油品,加油站,百公里油耗,每公里花费,备注'),
+        contains(
+          '时间,当前里程,加油量,单价,金额,是否加满,是否漏记,油品,加油站,百公里油耗,每公里花费,优惠金额,油量警告灯,备注',
+        ),
       );
       expect(exportedCsv, contains('8.00,0.64'));
     });

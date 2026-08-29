@@ -43,6 +43,10 @@ class FuelPriceProvider extends ChangeNotifier {
   DateTime? get priceFetchedAt =>
       _onlinePricesByProvince[_currentProvince]?.fetchedAt;
 
+  /// 指定省份的接口油价快照（账本审查对比用）
+  ApiZeroFuelPriceSnapshot? priceSnapshotFor(String province) =>
+      _onlinePricesByProvince[province];
+
   String? get priceSourceUrl =>
       _onlinePricesByProvince[_currentProvince]?.sourceUrl;
 

@@ -6,6 +6,9 @@ import 'package:provider/provider.dart';
 import '../../../providers/vehicle_provider.dart';
 import '../../../providers/refuel_provider.dart';
 import '../../../providers/expense_provider.dart';
+import '../../../data/models/audit_finding_model.dart';
+import '../../../providers/audit_provider.dart';
+import '../../screens/audit/audit_review_screen.dart';
 import '../../../providers/fuel_price_provider.dart';
 import '../../../data/models/vehicle_model.dart';
 import '../../../core/utils/date_formatter.dart';
@@ -27,6 +30,7 @@ class DashboardScreen extends StatelessWidget {
     final vehicleProv = context.watch<VehicleProvider>();
     final refuelProv = context.watch<RefuelProvider>();
     final expenseProv = context.watch<ExpenseProvider>();
+    final auditProv = context.watch<AuditProvider>();
     final vehicle = vehicleProv.currentVehicle;
     final summary = refuelProv.summary;
     final reminders = expenseProv.reminders;
@@ -81,12 +85,88 @@ class DashboardScreen extends StatelessWidget {
             // 3. 临期/逾期保养与保险提醒横幅
             if (reminders.isNotEmpty) _buildReminderBanner(context, reminders),
 
+            // 3.5 账本审查入口（有待确认异常时显示）
+            if (auditProv.pendingCount > 0)
+              _buildAuditEntryCard(context, auditProv),
+
             // 4. 核心快捷操作区（记加油、记费用）
             _buildQuickActions(context),
 
             // 5. 近期加油流水速览
             _buildRecentActivity(context, records),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// 账本审查入口卡片：仅显示数量与最高级别，详情进入审查页查看
+  Widget _buildAuditEntryCard(BuildContext context, AuditProvider audit) {
+    final colors = Theme.of(context).colorScheme;
+    final isCritical = audit.highestSeverity == AuditSeverity.critical;
+    final accent = isCritical ? Colors.red : Colors.orange;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+      child: Card(
+        margin: EdgeInsets.zero,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const AuditReviewScreen()),
+            );
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    AppIcons.auto_awesome_outlined,
+                    color: accent,
+                    size: 19,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '账本审查 · ${audit.pendingCount} 项待确认',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        isCritical ? '存在严重异常，建议尽快核对' : '含疑似异常，AI 可协助解释与建议',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  AppIcons.chevron_right,
+                  size: 17,
+                  color: colors.onSurfaceVariant,
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

@@ -11,6 +11,8 @@ class RefuelRecordModel {
   final String? gasStation; // 加油站名称/位置 (如 中石化朝阳站)
   final bool isFullTank; // 是否加满（小熊油耗计算基准：加满跳枪）
   final bool isForgotPrevious; // 是否漏记了前一次加油（漏记则作为新起点断点）
+  final double? discountAmount; // 优惠金额 (¥)：机显金额与实付金额的差额，仅作参考记录
+  final bool? fuelWarningLightOn; // 加油时油量警告灯是否点亮（null = 未记录）
   final String? note; // 备注说明 (如：全程空调、高速占比80%)
 
   // 计算输出属性（由 FuelCalculator 动态计算并填充，不作为必填输入）
@@ -32,6 +34,8 @@ class RefuelRecordModel {
     this.gasStation,
     this.isFullTank = true,
     this.isForgotPrevious = false,
+    this.discountAmount,
+    this.fuelWarningLightOn,
     this.note,
     this.fuelConsumption,
     this.costPerKm,
@@ -53,6 +57,12 @@ class RefuelRecordModel {
       'gas_station': gasStation,
       'is_full_tank': isFullTank ? 1 : 0,
       'is_forgot_previous': isForgotPrevious ? 1 : 0,
+      'discount_amount': discountAmount,
+      'fuel_warning_light': fuelWarningLightOn == null
+          ? null
+          : (fuelWarningLightOn!
+                ? 1
+                : 0),
       'note': note,
       'fuel_consumption': fuelConsumption,
       'cost_per_km': costPerKm,
@@ -77,6 +87,10 @@ class RefuelRecordModel {
       gasStation: map['gas_station'] as String?,
       isFullTank: (map['is_full_tank'] as int?) == 1,
       isForgotPrevious: (map['is_forgot_previous'] as int?) == 1,
+      discountAmount: (map['discount_amount'] as num?)?.toDouble(),
+      fuelWarningLightOn: map['fuel_warning_light'] == null
+          ? null
+          : (map['fuel_warning_light'] as int) == 1,
       note: map['note'] as String?,
       fuelConsumption: (map['fuel_consumption'] as num?)?.toDouble(),
       costPerKm: (map['cost_per_km'] as num?)?.toDouble(),
@@ -100,6 +114,8 @@ class RefuelRecordModel {
     String? gasStation,
     bool? isFullTank,
     bool? isForgotPrevious,
+    double? discountAmount,
+    bool? fuelWarningLightOn,
     String? note,
     double? fuelConsumption,
     double? costPerKm,
@@ -118,6 +134,8 @@ class RefuelRecordModel {
       gasStation: gasStation ?? this.gasStation,
       isFullTank: isFullTank ?? this.isFullTank,
       isForgotPrevious: isForgotPrevious ?? this.isForgotPrevious,
+      discountAmount: discountAmount ?? this.discountAmount,
+      fuelWarningLightOn: fuelWarningLightOn ?? this.fuelWarningLightOn,
       note: note ?? this.note,
       fuelConsumption: fuelConsumption ?? this.fuelConsumption,
       costPerKm: costPerKm ?? this.costPerKm,

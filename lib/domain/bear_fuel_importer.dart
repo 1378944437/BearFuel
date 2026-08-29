@@ -295,6 +295,24 @@ class BearFuelImporter {
           rawFuel = FuelType.gas92;
         }
 
+        // 优惠金额与油量警告灯（可选列）
+        final discountAmount = _parseNumber(
+          _getColValue(row, colMap['discountAmount']),
+        );
+        final warningLightRaw = _getColValue(
+          row,
+          colMap['fuelWarningLight'],
+        )?.toLowerCase();
+        bool? fuelWarningLightOn;
+        if (warningLightRaw != null && warningLightRaw.isNotEmpty) {
+          fuelWarningLightOn =
+              warningLightRaw.contains('是') ||
+              warningLightRaw == '1' ||
+              warningLightRaw.contains('亮') ||
+              warningLightRaw == 'true' ||
+              warningLightRaw == 'yes';
+        }
+
         final gasStation = _getColValue(row, colMap['gasStation']);
         final note = _getColValue(row, colMap['note']);
 
@@ -316,6 +334,8 @@ class BearFuelImporter {
                 : null,
             isFullTank: isFullTank,
             isForgotPrevious: isForgotPrevious,
+            discountAmount: discountAmount,
+            fuelWarningLightOn: fuelWarningLightOn,
             note: (note != null && note.isNotEmpty && note != 'nan')
                 ? note
                 : null,
@@ -340,7 +360,9 @@ class BearFuelImporter {
   static String exportToCsv(List<RefuelRecordModel> records) {
     final buffer = StringBuffer();
     // 写入标准小熊油耗兼容表头
-    buffer.writeln('时间,当前里程,加油量,单价,金额,是否加满,是否漏记,油品,加油站,百公里油耗,每公里花费,备注');
+    buffer.writeln(
+      '时间,当前里程,加油量,单价,金额,是否加满,是否漏记,油品,加油站,百公里油耗,每公里花费,优惠金额,油量警告灯,备注',
+    );
 
     for (final r in records) {
       final date = DateFormatter.formatYmdHm(r.refuelDate);
@@ -354,10 +376,14 @@ class BearFuelImporter {
       final station = _escapeCsv(r.gasStation ?? '');
       final consumption = r.fuelConsumption?.toStringAsFixed(2) ?? '';
       final costKm = r.costPerKm?.toStringAsFixed(2) ?? '';
+      final discount = r.discountAmount?.toStringAsFixed(2) ?? '';
+      final warningLight = r.fuelWarningLightOn == null
+          ? ''
+          : (r.fuelWarningLightOn! ? '是' : '否');
       final note = _escapeCsv(r.note ?? '');
 
       buffer.writeln(
-        '$date,$mileage,$amount,$price,$total,$isFull,$isForgot,$fuel,$station,$consumption,$costKm,$note',
+        '$date,$mileage,$amount,$price,$total,$isFull,$isForgot,$fuel,$station,$consumption,$costKm,$discount,$warningLight,$note',
       );
     }
 
@@ -383,6 +409,12 @@ class BearFuelImporter {
           h == 'time' ||
           h.contains('加油时间')) {
         assign('date', i);
+      } else if (h.contains('警告灯') || h.contains('油灯')) {
+        // 必须先于加油量分支："油量警告灯" 含 "油量"
+        assign('fuelWarningLight', i);
+      } else if (h.contains('优惠')) {
+        // 必须先于总价分支："优惠金额" 含 "金额"
+        assign('discountAmount', i);
       } else if (h.contains('当前里程') ||
           h.contains('总里程') ||
           h.contains('里程') ||
