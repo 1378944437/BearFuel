@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../../data/models/audit_finding_model.dart';
+import '../../../core/utils/date_formatter.dart';
 import '../../../data/models/refuel_record_model.dart';
 import '../../../data/services/ai_audit_config_store.dart';
 import '../../../providers/audit_provider.dart';
@@ -31,10 +32,13 @@ class _AuditReviewScreenState extends State<AuditReviewScreen> {
     });
   }
 
+  List<RefuelRecordModel> _recordsCache = const [];
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final audit = context.watch<AuditProvider>();
+    _recordsCache = context.read<RefuelProvider>().records;
     final findings = _applyFilter(audit.findings);
 
     return Scaffold(
@@ -86,7 +90,11 @@ class _AuditReviewScreenState extends State<AuditReviewScreen> {
                 ),
                 const SizedBox(width: 6),
                 _actionChip(
-                  label: audit.isAiRunning ? 'AI 分析中…' : 'AI 解释待确认',
+                  label: audit.isAiRunning
+                      ? 'AI 分析中…'
+                      : AiAuditConfigStore.models.length > 1
+                      ? 'AI 解释（${AiAuditConfigStore.models.length} 个模型）'
+                      : 'AI 解释待确认',
                   icon: AppIcons.auto_awesome_outlined,
                   enabled: !audit.isAiRunning && audit.isAiConfigured,
                   onTap: () => _runAiExplanations(),
@@ -108,7 +116,11 @@ class _AuditReviewScreenState extends State<AuditReviewScreen> {
                   Padding(
                     padding: const EdgeInsets.only(right: 6),
                     child: ChoiceChip(
-                      label: Text(entry.value),
+                      label: Text(
+                        entry.key == 'pending' && audit.pendingCount > 0
+                            ? '${entry.value} ${audit.pendingCount}'
+                            : entry.value,
+                      ),
                       selected: _filter == entry.key,
                       showCheckmark: false,
                       labelStyle: TextStyle(
@@ -281,6 +293,13 @@ class _AuditReviewScreenState extends State<AuditReviewScreen> {
               finding.title,
               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
             ),
+            if (_linkedRecordSummary(finding)) ...[
+              const SizedBox(height: 3),
+              Text(
+                _linkedRecordSummaryText(finding),
+                style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
+              ),
+            ],
             const SizedBox(height: 4),
             Text(
               finding.explanation,
@@ -360,7 +379,7 @@ class _AuditReviewScreenState extends State<AuditReviewScreen> {
                       onTap: () => _adoptSuggestion(finding),
                     ),
                   _findingAction(
-                    label: '标记为优惠价/已确认无误',
+                    label: '确认无误',
                     icon: AppIcons.verified_outlined,
                     color: colors.primary,
                     onTap: () => _updateStatus(
@@ -392,6 +411,17 @@ class _AuditReviewScreenState extends State<AuditReviewScreen> {
         ),
       ),
     );
+  }
+
+  bool _linkedRecordSummary(AuditFinding finding) =>
+      _recordById(finding.recordId ?? '', _recordsCache) != null;
+
+  String _linkedRecordSummaryText(AuditFinding finding) {
+    final record = _recordById(finding.recordId ?? '', _recordsCache);
+    if (record == null) return '';
+    return '${DateFormatter.formatMonthDay(record.refuelDate)} · '
+        '${record.mileage.toStringAsFixed(0)}km · '
+        '¥${record.totalPrice.toStringAsFixed(2)}';
   }
 
   Widget _findingAction({
@@ -510,6 +540,20 @@ class _AuditReviewScreenState extends State<AuditReviewScreen> {
       _showMessage('请先在"设置 > AI 账本审查设置"中配置服务');
       return;
     }
+    // 使用时从已保存的多个模型中选一个
+    String? model;
+    final savedModels = AiAuditConfigStore.models;
+    if (savedModels.isEmpty) {
+      _showMessage('尚未添加模型，请先在设置中添加');
+      return;
+    }
+    if (savedModels.length == 1) {
+      model = savedModels.first;
+    } else {
+      model = await _pickModelDialog(savedModels, AiAuditConfigStore.model);
+      if (model == null || model.isEmpty) return;
+    }
+    if (!mounted) return;
     HapticFeedback.lightImpact();
     final audit = context.read<AuditProvider>();
     final refuelProv = context.read<RefuelProvider>();
@@ -520,12 +564,58 @@ class _AuditReviewScreenState extends State<AuditReviewScreen> {
     final records = refuelProv.records;
 
     await audit.runAiExplanations(
+      model: model,
       contextBuilder: (finding) => audit.buildFindingContext(
         finding: finding,
         record: _recordById(finding.recordId ?? '', records),
         tankCapacity: vehicle?.tankCapacity,
         province: province,
         priceSnapshot: fuelProv.priceSnapshotFor(province),
+      ),
+    );
+  }
+
+  /// 从已保存模型中选择一个（默认勾选当前激活模型）
+  Future<String?> _pickModelDialog(List<String> models, String active) {
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('选择本次使用的模型'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final model in models)
+              ListTile(
+                dense: true,
+                leading: Icon(
+                  model == active
+                      ? AppIcons.check_circle
+                      : AppIcons.circle_outlined,
+                  size: 18,
+                  color: model == active
+                      ? const Color(0xFFFF5A24)
+                      : Theme.of(ctx).colorScheme.onSurfaceVariant,
+                ),
+                title: Text(
+                  model,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: model == active
+                        ? FontWeight.bold
+                        : FontWeight.normal,
+                  ),
+                ),
+                onTap: () => Navigator.pop(ctx, model),
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+        ],
       ),
     );
   }

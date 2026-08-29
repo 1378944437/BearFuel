@@ -1736,6 +1736,17 @@ class _SlidableRefuelItemCardState extends State<_SlidableRefuelItemCard>
                                   fontSize: 13,
                                 ),
                               ),
+                              if (r.fuelWarningLightOn == true) ...[
+                                const SizedBox(width: 4),
+                                const Tooltip(
+                                  message: '加油时油量警告灯已点亮',
+                                  child: Icon(
+                                    AppIcons.warning_amber_rounded,
+                                    size: 14,
+                                    color: Colors.orange,
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                           if (hasConsumption)
@@ -1871,6 +1882,17 @@ class _SlidableRefuelItemCardState extends State<_SlidableRefuelItemCard>
                                     color: Color(0xFFFF5A24),
                                   ),
                                 ),
+                                if (r.discountAmount != null &&
+                                    r.discountAmount! > 0) ...[
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '已优惠 ¥${r.discountAmount!.toStringAsFixed(2)}（机显 ¥${(r.fuelAmount * r.unitPrice).toStringAsFixed(2)}）',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.green[700],
+                                    ),
+                                  ),
+                                ],
                                 const SizedBox(height: 2),
                                 Text(
                                   '${r.fuelAmount.toStringAsFixed(2)}升 @ ¥${r.unitPrice.toStringAsFixed(2)}/升 (${r.fuelType})',
@@ -2110,6 +2132,27 @@ class _SlidableRefuelItemCardState extends State<_SlidableRefuelItemCard>
                   ),
                 ],
               ),
+              if (r.discountAmount != null && r.discountAmount! > 0) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildDetailCell(
+                        '机显金额',
+                        '¥ ${(r.fuelAmount * r.unitPrice).toStringAsFixed(2)}',
+                        colors.onSurfaceVariant,
+                      ),
+                    ),
+                    Expanded(
+                      child: _buildDetailCell(
+                        '优惠金额',
+                        '-¥ ${r.discountAmount!.toStringAsFixed(2)}',
+                        Colors.green[700]!,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 16),
 
               // 加油关键参数表
@@ -2129,6 +2172,12 @@ class _SlidableRefuelItemCardState extends State<_SlidableRefuelItemCard>
                     _buildDetailRow(
                       '单价 / 升数',
                       '¥${r.unitPrice.toStringAsFixed(2)}/L · ${r.fuelAmount.toStringAsFixed(2)}L',
+                    ),
+                    _buildDetailRow(
+                      '油量警告灯',
+                      r.fuelWarningLightOn == null
+                          ? '未记录'
+                          : (r.fuelWarningLightOn! ? '点亮' : '未点亮'),
                     ),
                     _buildDetailRow(
                       '表显总里程',

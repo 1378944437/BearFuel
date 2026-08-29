@@ -724,7 +724,9 @@ class DashboardScreen extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      '¥${r.totalPrice.toStringAsFixed(2)}',
+                      r.discountAmount != null && r.discountAmount! > 0
+                          ? '¥${r.totalPrice.toStringAsFixed(2)}（优¥${r.discountAmount!.toStringAsFixed(0)}）'
+                          : '¥${r.totalPrice.toStringAsFixed(2)}',
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 14,

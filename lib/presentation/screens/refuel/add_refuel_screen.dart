@@ -388,7 +388,13 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
       body: Form(
         key: _formKey,
         child: ListView(
-          padding: const EdgeInsets.all(16.0),
+          // 底部叠加系统手势条安全区，避免最后的内容被遮挡
+          padding: EdgeInsets.fromLTRB(
+            16,
+            16,
+            16,
+            16 + MediaQuery.of(context).padding.bottom,
+          ),
           children: [
             // 0. 加满提示横幅（对标小熊油耗官方流程）
             Container(
@@ -1062,62 +1068,67 @@ class _SegmentedQuestionCard<T> extends StatelessWidget {
       margin: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Row(
-                children: [
-                  Flexible(
-                    child: Text(
-                      isRequired ? '$label *' : label,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      overflow: TextOverflow.ellipsis,
+            Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    isRequired ? '$label *' : label,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
                     ),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  if (tooltip != null) ...[
-                    const SizedBox(width: 6),
-                    _QuestionMarkTooltip(message: tooltip!),
-                  ],
+                ),
+                if (tooltip != null) ...[
+                  const SizedBox(width: 6),
+                  _QuestionMarkTooltip(message: tooltip!),
                 ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            SegmentedButton<T>(
-              showSelectedIcon: false,
-              segments: [
-                for (var i = 0; i < options.length; i++)
-                  ButtonSegment(
-                    value: options[i],
-                    label: Text(
-                      optionLabels[i],
-                      style: const TextStyle(fontSize: 13),
-                    ),
-                  ),
               ],
-              selected: {selected},
-              style: ButtonStyle(
-                visualDensity: VisualDensity.compact,
-                backgroundColor: WidgetStateProperty.resolveWith((states) {
-                  if (states.contains(WidgetState.selected)) {
-                    return accentColor;
+            ),
+            const SizedBox(height: 10),
+            // 选项整行铺开（等宽分段），窄屏也不会溢出
+            SizedBox(
+              width: double.infinity,
+              child: SegmentedButton<T>(
+                showSelectedIcon: false,
+                segments: [
+                  for (var i = 0; i < options.length; i++)
+                    ButtonSegment(
+                      value: options[i],
+                      label: Text(
+                        optionLabels[i],
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                ],
+                selected: {selected},
+                style: ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                  backgroundColor: WidgetStateProperty.resolveWith((states) {
+                    if (states.contains(WidgetState.selected)) {
+                      return accentColor;
+                    }
+                    return colors.surfaceContainerHighest.withValues(
+                      alpha: 0.55,
+                    );
+                  }),
+                  foregroundColor: WidgetStateProperty.resolveWith((states) {
+                    if (states.contains(WidgetState.selected)) {
+                      return Colors.white;
+                    }
+                    return colors.onSurfaceVariant;
+                  }),
+                ),
+                onSelectionChanged: (selection) {
+                  if (selection.isNotEmpty) {
+                    onSelect(selection.first);
                   }
-                  return colors.surfaceContainerHighest.withValues(alpha: 0.55);
-                }),
-                foregroundColor: WidgetStateProperty.resolveWith((states) {
-                  if (states.contains(WidgetState.selected)) {
-                    return Colors.white;
-                  }
-                  return colors.onSurfaceVariant;
-                }),
+                },
               ),
-              onSelectionChanged: (selection) {
-                if (selection.isNotEmpty) {
-                  onSelect(selection.first);
-                }
-              },
             ),
           ],
         ),

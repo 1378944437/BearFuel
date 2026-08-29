@@ -183,6 +183,7 @@ class AuditProvider extends ChangeNotifier {
   /// 手动触发间隔至少 1 分钟；单次最多处理 [limit] 条。
   Future<int> runAiExplanations({
     required Map<String, dynamic> Function(AuditFinding finding) contextBuilder,
+    required String model,
     int limit = 10,
   }) async {
     if (_isAiRunning) return 0;
@@ -231,6 +232,7 @@ class AuditProvider extends ChangeNotifier {
         notifyListeners();
 
         final result = await AiAuditService.reviewFinding(
+          model: model,
           context: contextBuilder(finding),
         );
         if (result == null) {
@@ -244,7 +246,7 @@ class AuditProvider extends ChangeNotifier {
           suggestion: result.suggestion,
           confidence: result.confidence,
           severity: result.severity,
-          model: AiAuditConfigStore.model,
+          model: model,
         );
         succeeded++;
       }

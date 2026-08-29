@@ -1,13 +1,15 @@
 import 'package:bearfuel/core/theme/app_icons.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/config/app_config.dart';
 import '../../../core/utils/input_formatters.dart';
 import '../../../data/services/ai_audit_config_store.dart';
 import '../../../data/services/ai_audit_service.dart';
-import '../../../core/config/app_config.dart';
 import '../../widgets/custom_card.dart';
 
 /// AI 账本审查服务设置（OpenAI 兼容接口）
+///
+/// 支持保存多个模型，发起 AI 审查时再从中选用一个。
 class AiAuditSettingsScreen extends StatefulWidget {
   const AiAuditSettingsScreen({super.key});
 
@@ -18,7 +20,6 @@ class AiAuditSettingsScreen extends StatefulWidget {
 class _AiAuditSettingsScreenState extends State<AiAuditSettingsScreen> {
   late TextEditingController _baseUrlController;
   late TextEditingController _apiKeyController;
-  late TextEditingController _modelController;
   late TextEditingController _serviceNameController;
 
   bool _obscureKey = true;
@@ -26,6 +27,8 @@ class _AiAuditSettingsScreenState extends State<AiAuditSettingsScreen> {
   bool _isLoadingModels = false;
   String? _testResult;
   bool _testOk = false;
+  List<String> _models = [];
+  String _activeModel = '';
 
   @override
   void initState() {
@@ -34,31 +37,30 @@ class _AiAuditSettingsScreenState extends State<AiAuditSettingsScreen> {
       text: AiAuditConfigStore.baseUrl,
     );
     _apiKeyController = TextEditingController(text: AiAuditConfigStore.apiKey);
-    _modelController = TextEditingController(text: AiAuditConfigStore.model);
     _serviceNameController = TextEditingController(
       text: AiAuditConfigStore.serviceName == '自定义服务'
           ? ''
           : AiAuditConfigStore.serviceName,
     );
+    _models = List<String>.from(AiAuditConfigStore.models);
+    _activeModel = AiAuditConfigStore.model;
   }
 
   @override
   void dispose() {
     _baseUrlController.dispose();
     _apiKeyController.dispose();
-    _modelController.dispose();
     _serviceNameController.dispose();
     super.dispose();
   }
 
-  bool get _hasChanges =>
-      _baseUrlController.text.trim() != AiAuditConfigStore.baseUrl ||
-      _apiKeyController.text.trim() != AiAuditConfigStore.apiKey ||
-      _modelController.text.trim() != AiAuditConfigStore.model ||
-      _serviceNameController.text.trim() !=
-          (AiAuditConfigStore.serviceName == '自定义服务'
-              ? ''
-              : AiAuditConfigStore.serviceName);
+  Future<void> _persistConnection() async {
+    await AiAuditConfigStore.save(
+      baseUrl: _baseUrlController.text.trim(),
+      apiKey: _apiKeyController.text.trim(),
+      serviceName: _serviceNameController.text.trim(),
+    );
+  }
 
   Future<void> _save() async {
     FocusScope.of(context).unfocus();
@@ -67,12 +69,15 @@ class _AiAuditSettingsScreenState extends State<AiAuditSettingsScreen> {
       _showMessage('Base URL 需以 http(s):// 开头', Colors.red);
       return;
     }
-    await AiAuditConfigStore.save(
-      baseUrl: baseUrl,
-      apiKey: _apiKeyController.text.trim(),
-      model: _modelController.text.trim(),
-      serviceName: _serviceNameController.text.trim(),
-    );
+    if (_models.isEmpty) {
+      _showMessage('请至少添加一个模型（获取列表或手动添加）', Colors.orange);
+      return;
+    }
+    await _persistConnection();
+    await AiAuditConfigStore.saveModels(_models);
+    if (_activeModel.isNotEmpty) {
+      await AiAuditConfigStore.setActiveModel(_activeModel);
+    }
     if (!mounted) return;
     _showMessage('AI 审查配置已保存到本机安全存储', Colors.green);
     setState(() {});
@@ -80,18 +85,18 @@ class _AiAuditSettingsScreenState extends State<AiAuditSettingsScreen> {
 
   Future<void> _test() async {
     FocusScope.of(context).unfocus();
-    // 先临时应用当前输入再测试
-    await AiAuditConfigStore.save(
-      baseUrl: _baseUrlController.text.trim(),
-      apiKey: _apiKeyController.text.trim(),
-      model: _modelController.text.trim(),
-      serviceName: _serviceNameController.text.trim(),
-    );
+    await _persistConnection();
+    if (_activeModel.isEmpty) {
+      _showMessage('请先添加并选择一个模型', Colors.orange);
+      return;
+    }
     setState(() {
       _isTesting = true;
       _testResult = null;
     });
-    final (ok, message) = await AiAuditService.testConnection();
+    final (ok, message) = await AiAuditService.testConnection(
+      model: _activeModel,
+    );
     if (!mounted) return;
     setState(() {
       _isTesting = false;
@@ -106,7 +111,7 @@ class _AiAuditSettingsScreenState extends State<AiAuditSettingsScreen> {
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('清除本机 AI 配置'),
-        content: const Text('将删除本机保存的 Base URL、API Key 与模型名称。清除后账本审查仍可使用本地规则。'),
+        content: const Text('将删除本机保存的 Base URL、API Key 与全部模型。清除后账本审查仍可使用本地规则。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -124,31 +129,26 @@ class _AiAuditSettingsScreenState extends State<AiAuditSettingsScreen> {
     await AiAuditConfigStore.clear();
     _baseUrlController.clear();
     _apiKeyController.clear();
-    _modelController.clear();
     _serviceNameController.clear();
     if (!mounted) return;
     setState(() {
+      _models = [];
+      _activeModel = '';
       _testResult = null;
     });
     _showMessage('已清除本机 AI 配置', Colors.orange);
   }
 
-  /// 从服务拉取模型列表并弹出选择
-  Future<void> _pickModelFromServer() async {
+  /// 从服务获取模型列表 → 多选面板
+  Future<void> _fetchModels() async {
     if (_isLoadingModels) return;
     FocusScope.of(context).unfocus();
-    // 先暂存当前输入，保证 Base URL / Key 生效
-    await AiAuditConfigStore.save(
-      baseUrl: _baseUrlController.text.trim(),
-      apiKey: _apiKeyController.text.trim(),
-      model: _modelController.text.trim(),
-      serviceName: _serviceNameController.text.trim(),
-    );
+    await _persistConnection();
 
     setState(() => _isLoadingModels = true);
-    List<String> models;
+    List<String> fetched;
     try {
-      models = await AiAuditService.fetchModels();
+      fetched = await AiAuditService.fetchModels();
     } on AiServiceException catch (e) {
       if (!mounted) return;
       setState(() => _isLoadingModels = false);
@@ -162,11 +162,13 @@ class _AiAuditSettingsScreenState extends State<AiAuditSettingsScreen> {
     }
     if (!mounted) return;
     setState(() => _isLoadingModels = false);
-    await _showModelPicker(models);
+    await _showMultiSelectSheet(fetched);
   }
 
-  Future<void> _showModelPicker(List<String> models) async {
-    final picked = await showModalBottomSheet<String>(
+  /// 多选面板：勾选要保存的模型（默认全选，可搜索）
+  Future<void> _showMultiSelectSheet(List<String> fetched) async {
+    final selected = {for (final m in fetched) m: true};
+    final picked = await showModalBottomSheet<List<String>>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -174,7 +176,7 @@ class _AiAuditSettingsScreenState extends State<AiAuditSettingsScreen> {
         final colors = Theme.of(sheetCtx).colorScheme;
         final queryController = TextEditingController();
         return DraggableScrollableSheet(
-          initialChildSize: 0.7,
+          initialChildSize: 0.75,
           maxChildSize: 0.92,
           minChildSize: 0.4,
           expand: false,
@@ -182,11 +184,12 @@ class _AiAuditSettingsScreenState extends State<AiAuditSettingsScreen> {
             return StatefulBuilder(
               builder: (innerCtx, setSheetState) {
                 final query = queryController.text.trim().toLowerCase();
-                final filtered = query.isEmpty
-                    ? models
-                    : models
-                          .where((m) => m.toLowerCase().contains(query))
-                          .toList();
+                final visible = fetched
+                    .where(
+                      (m) => query.isEmpty || m.toLowerCase().contains(query),
+                    )
+                    .toList();
+                final checkedCount = selected.values.where((v) => v).length;
                 return Container(
                   decoration: BoxDecoration(
                     color: Theme.of(sheetCtx).cardColor,
@@ -210,7 +213,7 @@ class _AiAuditSettingsScreenState extends State<AiAuditSettingsScreen> {
                         child: Row(
                           children: [
                             Text(
-                              '选择模型（${filtered.length}）',
+                              '选择要保存的模型（已选 $checkedCount）',
                               style: Theme.of(innerCtx).textTheme.titleMedium,
                             ),
                             const Spacer(),
@@ -223,20 +226,37 @@ class _AiAuditSettingsScreenState extends State<AiAuditSettingsScreen> {
                       ),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: TextField(
-                          controller: queryController,
-                          onChanged: (_) => setSheetState(() {}),
-                          decoration: const InputDecoration(
-                            hintText: '搜索模型',
-                            prefixIcon: Icon(AppIcons.search, size: 18),
-                            isDense: true,
-                            border: OutlineInputBorder(),
-                          ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: queryController,
+                                onChanged: (_) => setSheetState(() {}),
+                                decoration: const InputDecoration(
+                                  hintText: '搜索模型',
+                                  prefixIcon: Icon(AppIcons.search, size: 18),
+                                  isDense: true,
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () => setSheetState(() {
+                                final allChecked =
+                                    visible.isNotEmpty &&
+                                    visible.every((m) => selected[m] == true);
+                                for (final m in visible) {
+                                  selected[m] = !allChecked;
+                                }
+                              }),
+                              child: const Text('全选/反选'),
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(height: 6),
                       Expanded(
-                        child: filtered.isEmpty
+                        child: visible.isEmpty
                             ? Center(
                                 child: Text(
                                   '没有匹配的模型',
@@ -247,36 +267,42 @@ class _AiAuditSettingsScreenState extends State<AiAuditSettingsScreen> {
                               )
                             : ListView.builder(
                                 controller: scrollController,
-                                itemCount: filtered.length,
+                                itemCount: visible.length,
                                 itemBuilder: (innerCtx, index) {
-                                  final model = filtered[index];
-                                  final isCurrent =
-                                      model == _modelController.text.trim();
-                                  return ListTile(
+                                  final model = visible[index];
+                                  final isChecked = selected[model] == true;
+                                  return CheckboxListTile(
                                     dense: true,
+                                    value: isChecked,
                                     title: Text(
                                       model,
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: isCurrent
-                                            ? FontWeight.bold
-                                            : FontWeight.normal,
-                                        color: isCurrent
-                                            ? const Color(0xFFFF5A24)
-                                            : null,
-                                      ),
+                                      style: const TextStyle(fontSize: 13),
                                     ),
-                                    trailing: isCurrent
-                                        ? const Icon(
-                                            AppIcons.check_circle,
-                                            size: 16,
-                                            color: Color(0xFFFF5A24),
-                                          )
-                                        : null,
-                                    onTap: () => Navigator.pop(sheetCtx, model),
+                                    onChanged: (v) => setSheetState(
+                                      () => selected[model] = v ?? false,
+                                    ),
                                   );
                                 },
                               ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFFF5A24),
+                              foregroundColor: Colors.white,
+                            ),
+                            onPressed: () {
+                              final pickedModels = fetched
+                                  .where((m) => selected[m] == true)
+                                  .toList();
+                              Navigator.pop(sheetCtx, pickedModels);
+                            },
+                            child: const Text('保存所选模型'),
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -287,10 +313,80 @@ class _AiAuditSettingsScreenState extends State<AiAuditSettingsScreen> {
         );
       },
     );
-    if (picked != null && picked.isNotEmpty && mounted) {
-      setState(() => _modelController.text = picked);
-      _showMessage('已选择模型：$picked（记得保存配置）', Colors.green);
+
+    if (picked == null) return;
+    // 合并：保留已保存的 + 新勾选的
+    final merged = <String>[..._models];
+    for (final m in picked) {
+      if (!merged.contains(m)) merged.add(m);
     }
+    await AiAuditConfigStore.saveModels(merged);
+    if (!mounted) return;
+    setState(() {
+      _models = List<String>.from(AiAuditConfigStore.models);
+      _activeModel = AiAuditConfigStore.model;
+    });
+    _showMessage('已保存 ${picked.length} 个模型', Colors.green);
+  }
+
+  /// 手动添加模型
+  Future<void> _addManualModel() async {
+    final controller = TextEditingController();
+    final added = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('手动添加模型'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          autocorrect: false,
+          inputFormatters: [AppInputFormatters.maxChars(80)],
+          decoration: const InputDecoration(
+            labelText: '模型名称',
+            hintText: '如 gpt-4o-mini',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFF5A24),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('添加'),
+          ),
+        ],
+      ),
+    );
+    if (added == null || added.isEmpty) return;
+    await AiAuditConfigStore.addModel(added);
+    if (!mounted) return;
+    setState(() {
+      _models = List<String>.from(AiAuditConfigStore.models);
+      _activeModel = AiAuditConfigStore.model;
+    });
+  }
+
+  /// 删除模型
+  Future<void> _removeModel(String model) async {
+    await AiAuditConfigStore.removeModel(model);
+    if (!mounted) return;
+    setState(() {
+      _models = List<String>.from(AiAuditConfigStore.models);
+      _activeModel = AiAuditConfigStore.model;
+    });
+  }
+
+  /// 切换激活模型
+  Future<void> _activateModel(String model) async {
+    await AiAuditConfigStore.setActiveModel(model);
+    if (!mounted) return;
+    setState(() => _activeModel = AiAuditConfigStore.model);
   }
 
   void _showMessage(String message, Color color) {
@@ -341,7 +437,7 @@ class _AiAuditSettingsScreenState extends State<AiAuditSettingsScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '将拼接为 {Base URL}/chat/completions',
+                  '将拼接为 {Base URL}/chat/completions 与 {Base URL}/models',
                   style: TextStyle(
                     fontSize: 10,
                     color: colors.onSurfaceVariant,
@@ -358,54 +454,13 @@ class _AiAuditSettingsScreenState extends State<AiAuditSettingsScreen> {
                     hintText: 'sk-...',
                     prefixIcon: const Icon(AppIcons.gps_fixed),
                     suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscureKey
-                            ? AppIcons.arrow_drop_down
-                            : AppIcons.arrow_drop_down,
-                      ),
+                      icon: const Icon(AppIcons.keyboard_arrow_down, size: 18),
                       tooltip: _obscureKey ? '显示 Key' : '隐藏 Key',
                       onPressed: () =>
                           setState(() => _obscureKey = !_obscureKey),
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _modelController,
-                  autocorrect: false,
-                  inputFormatters: [AppInputFormatters.maxChars(80)],
-                  decoration: InputDecoration(
-                    labelText: '模型名称 *',
-                    hintText: '如 gpt-4o-mini / deepseek-chat',
-                    prefixIcon: const Icon(AppIcons.auto_awesome_outlined),
-                    suffixIcon: _isLoadingModels
-                        ? const Padding(
-                            padding: EdgeInsets.all(12),
-                            child: SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                          )
-                        : IconButton(
-                            icon: const Icon(
-                              AppIcons.keyboard_arrow_down,
-                              size: 18,
-                            ),
-                            tooltip: '获取模型列表',
-                            onPressed: _pickModelFromServer,
-                          ),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '可手动填写，或点击右侧按钮从服务获取模型列表',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: colors.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 8),
                 const SizedBox(height: 16),
                 Row(
                   children: [
@@ -430,9 +485,7 @@ class _AiAuditSettingsScreenState extends State<AiAuditSettingsScreen> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: _hasChanges || _testResult != null
-                            ? _save
-                            : null,
+                        onPressed: _save,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFFFF5A24),
                           foregroundColor: Colors.white,
@@ -471,54 +524,197 @@ class _AiAuditSettingsScreenState extends State<AiAuditSettingsScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          CustomCard(
-            margin: EdgeInsets.zero,
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '隐私与安全',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '· API Key 保存在本机安全存储，不进入备份文件与日志\n'
-                  '· 仅发送异常记录的必要字段（日期、里程、油量、价格、油品），\n'
-                  '  不发送车牌号、完整备注与定位信息\n'
-                  '· AI 返回内容经过结构校验，非法响应不会展示\n'
-                  '· AI 不直接修改账单，任何修改都需你确认\n'
-                  '· 未配置 AI 时，本地规则审查仍然可用',
-                  style: TextStyle(
-                    fontSize: 11,
-                    height: 1.6,
-                    color: colors.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: _clear,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.red,
+          _buildModelManagerCard(colors),
+          const SizedBox(height: 12),
+          _buildPrivacyCard(colors),
+        ],
+      ),
+    );
+  }
+
+  /// 模型管理卡片：多模型列表 + 获取/手动添加 + 激活切换 + 删除
+  Widget _buildModelManagerCard(ColorScheme colors) {
+    return CustomCard(
+      margin: EdgeInsets.zero,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Text(
+                '模型管理',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              ),
+              SizedBox(width: 6),
+              _QuestionMarkTooltip(
+                message: '可保存多个模型；发起 AI 审查时再选择使用哪一个。点名称左侧圆点设为默认。',
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _models.isEmpty
+                ? '尚未添加模型：从服务获取列表，或手动添加'
+                : '当前使用: ${_activeModel.isEmpty ? "未设置" : _activeModel}',
+            style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
+          ),
+          const SizedBox(height: 10),
+          for (final model in _models)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                children: [
+                  InkWell(
+                    borderRadius: BorderRadius.circular(999),
+                    onTap: () => _activateModel(model),
+                    child: Padding(
+                      padding: const EdgeInsets.all(4),
+                      child: Icon(
+                        _activeModel == model
+                            ? AppIcons.check_circle
+                            : AppIcons.circle_outlined,
+                        size: 18,
+                        color: _activeModel == model
+                            ? const Color(0xFFFF5A24)
+                            : colors.onSurfaceVariant,
+                      ),
                     ),
-                    icon: const Icon(AppIcons.delete_outline, size: 16),
-                    label: const Text('清除本机配置'),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'BearFuel ${AppConfig.versionName} · 提示词版本 ${AiAuditService.promptVersion}',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: colors.onSurfaceVariant,
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      model,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: _activeModel == model
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                      ),
+                    ),
                   ),
-                ),
-              ],
+                  IconButton(
+                    icon: const Icon(
+                      AppIcons.close,
+                      size: 16,
+                      color: Colors.red,
+                    ),
+                    tooltip: '移除模型',
+                    onPressed: () => _removeModel(model),
+                  ),
+                ],
+              ),
             ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _isLoadingModels ? null : _fetchModels,
+                  icon: _isLoadingModels
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(AppIcons.file_download_outlined, size: 16),
+                  label: Text(_isLoadingModels ? '获取中…' : '获取模型列表'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _addManualModel,
+                  icon: const Icon(AppIcons.add, size: 16),
+                  label: const Text('手动添加'),
+                ),
+              ),
+            ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildPrivacyCard(ColorScheme colors) {
+    return CustomCard(
+      margin: EdgeInsets.zero,
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '隐私与安全',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '· API Key 与模型清单保存在本机安全存储，不进入备份文件与日志\n'
+            '· 仅发送异常记录的必要字段（日期、里程、油量、价格、油品），\n'
+            '  不发送车牌号、完整备注与定位信息\n'
+            '· AI 返回内容经过结构校验，非法响应不会展示\n'
+            '· AI 不直接修改账单，任何修改都需你确认\n'
+            '· 未配置 AI 时，本地规则审查仍然可用',
+            style: TextStyle(
+              fontSize: 11,
+              height: 1.6,
+              color: colors.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _clear,
+              style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+              icon: const Icon(AppIcons.delete_outline, size: 16),
+              label: const Text('清除本机配置'),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'BearFuel ${AppConfig.versionName} · 提示词版本 ${AiAuditService.promptVersion}',
+            style: TextStyle(fontSize: 10, color: colors.onSurfaceVariant),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// "？" 说明气泡
+class _QuestionMarkTooltip extends StatelessWidget {
+  final String message;
+
+  const _QuestionMarkTooltip({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: message,
+      triggerMode: TooltipTriggerMode.tap,
+      showDuration: const Duration(seconds: 4),
+      child: Container(
+        width: 16,
+        height: 16,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            width: 1,
+          ),
+        ),
+        child: Text(
+          '?',
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
       ),
     );
   }

@@ -69,7 +69,9 @@ evidence 数组元素形如 {"field": "字段名", "record_value": 原值, "refe
   }
 
   /// 测试连接：校验 URL 格式、Key、模型与响应可解析性
-  static Future<(bool ok, String message)> testConnection() async {
+  static Future<(bool ok, String message)> testConnection({
+    String? model,
+  }) async {
     if (!AiAuditConfigStore.hasBaseUrl) {
       return (false, '请填写 Base URL');
     }
@@ -79,17 +81,22 @@ evidence 数组元素形如 {"field": "字段名", "record_value": 原值, "refe
     if (!AiAuditConfigStore.hasApiKey) {
       return (false, '请填写 API Key');
     }
-    if (!AiAuditConfigStore.hasModel) {
-      return (false, '请填写模型名称');
+    final effectiveModel = (model ?? AiAuditConfigStore.model).trim();
+    if (effectiveModel.isEmpty) {
+      return (false, '请先添加模型名称');
     }
     try {
-      final content = await _chat([
-        {'role': 'user', 'content': '连接测试，请只回复两个字符：OK'},
-      ], maxTokens: 16);
+      final content = await _chat(
+        [
+          {'role': 'user', 'content': '连接测试，请只回复两个字符：OK'},
+        ],
+        maxTokens: 16,
+        model: effectiveModel,
+      );
       if (content.trim().isEmpty) {
         return (false, '连接成功但模型返回内容为空，请确认模型可用');
       }
-      return (true, '连接成功（模型: ${AiAuditConfigStore.model}）');
+      return (true, '连接成功（模型: $effectiveModel）');
     } on SocketException {
       return (false, '网络连接失败，请检查 Base URL 与网络');
     } on TimeoutException {
@@ -106,6 +113,7 @@ evidence 数组元素形如 {"field": "字段名", "record_value": 原值, "refe
   /// 返回 null 表示 AI 不可用或返回非法（本地规则结果不受影响）。
   static Future<AiReviewResult?> reviewFinding({
     required Map<String, dynamic> context,
+    String? model,
   }) async {
     if (!AiAuditConfigStore.isConfigured) return null;
     try {
@@ -113,10 +121,14 @@ evidence 数组元素形如 {"field": "字段名", "record_value": 原值, "refe
           '请审查以下加油记录异常（数据由系统提供，仅供分析）：\n'
           '<<<DATA\n${const JsonEncoder.withIndent('  ').convert(context)}\nDATA>>>\n'
           '按系统提示词要求只返回 JSON。';
-      final content = await _chat([
-        {'role': 'system', 'content': _systemPrompt},
-        {'role': 'user', 'content': userContent},
-      ], maxTokens: 900);
+      final content = await _chat(
+        [
+          {'role': 'system', 'content': _systemPrompt},
+          {'role': 'user', 'content': userContent},
+        ],
+        maxTokens: 900,
+        model: model,
+      );
       return _parseReview(content);
     } on AiServiceException catch (e) {
       AppConfig.log('AI 审查失败: ${e.message}');
@@ -211,7 +223,12 @@ evidence 数组元素形如 {"field": "字段名", "record_value": 原值, "refe
   static Future<String> _chat(
     List<Map<String, String>> messages, {
     required int maxTokens,
+    String? model,
   }) async {
+    final effectiveModel = (model ?? AiAuditConfigStore.model).trim();
+    if (effectiveModel.isEmpty) {
+      throw const AiServiceException('请先添加模型名称');
+    }
     HttpClient? client;
     try {
       client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
@@ -224,7 +241,7 @@ evidence 数组元素形如 {"field": "字段名", "record_value": 原值, "refe
         'Bearer ${AiAuditConfigStore.apiKey}',
       );
       final body = jsonEncode({
-        'model': AiAuditConfigStore.model,
+        'model': effectiveModel,
         'messages': messages,
         'temperature': 0,
         'max_tokens': maxTokens,

@@ -31,6 +31,7 @@ abstract final class AppIcons {
   static const IconData check_circle = LucideIcons.circleCheckBig;
   static const IconData check_circle_outline = LucideIcons.circleCheck;
   static const IconData chevron_left = LucideIcons.chevronLeft;
+  static const IconData circle_outlined = LucideIcons.circle;
   static const IconData chevron_right = LucideIcons.chevronRight;
   static const IconData clear = LucideIcons.x;
   static const IconData close = LucideIcons.x;
