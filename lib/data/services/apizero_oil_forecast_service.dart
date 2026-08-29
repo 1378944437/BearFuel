@@ -146,16 +146,25 @@ class ApiZeroOilForecastResponse {
   final List<ApiZeroAdjustmentScheduleItem> schedule;
   final DateTime fetchedAt;
 
+  /// 预测与日历各自的成功拉取时间：避免"部分成功"把另一部分的时间戳刷新，
+  /// 造成陈旧数据长期"保鲜"的假象。
+  final DateTime? forecastFetchedAt;
+  final DateTime? scheduleFetchedAt;
+
   const ApiZeroOilForecastResponse({
     required this.forecast,
     required this.schedule,
     required this.fetchedAt,
+    this.forecastFetchedAt,
+    this.scheduleFetchedAt,
   });
 
   Map<String, dynamic> toJson() => {
     'forecast': forecast?.toJson(),
     'schedule': schedule.map((item) => item.toJson()).toList(),
     'fetchedAt': fetchedAt.millisecondsSinceEpoch,
+    'forecastFetchedAt': forecastFetchedAt?.millisecondsSinceEpoch,
+    'scheduleFetchedAt': scheduleFetchedAt?.millisecondsSinceEpoch,
   };
 
   static ApiZeroOilForecastResponse? fromJson(Map<String, dynamic> json) {
@@ -172,12 +181,21 @@ class ApiZeroOilForecastResponse {
         .whereType<ApiZeroAdjustmentScheduleItem>()
         .toList();
     final rawForecast = json['forecast'];
+    DateTime? partTime(dynamic value) => value is num
+        ? DateTime.fromMillisecondsSinceEpoch(value.toInt())
+        : null;
     return ApiZeroOilForecastResponse(
       forecast: rawForecast is Map
           ? ApiZeroOilForecast.fromJson(Map<String, dynamic>.from(rawForecast))
           : null,
       schedule: schedule,
       fetchedAt: DateTime.fromMillisecondsSinceEpoch(fetchedAt.toInt()),
+      forecastFetchedAt:
+          partTime(json['forecastFetchedAt']) ??
+          DateTime.fromMillisecondsSinceEpoch(fetchedAt.toInt()),
+      scheduleFetchedAt:
+          partTime(json['scheduleFetchedAt']) ??
+          DateTime.fromMillisecondsSinceEpoch(fetchedAt.toInt()),
     );
   }
 }
@@ -218,14 +236,26 @@ class ApiZeroOilForecastService {
         force: force,
         query: {'action': 'schedule', 'year': '$year'},
       );
-      if (forecast == null && schedule == null) return usableCached;
+      if (forecast == null && schedule == null) {
+        // 两个动作都被节流且没有可用的新数据：明确告知当前为缓存
+        _lastErrorMessage ??= '30 分钟内已请求过，当前展示本地缓存数据';
+        return usableCached;
+      }
 
       final parsedForecast = forecast == null ? null : _parseForecast(forecast);
       final parsedSchedule = schedule == null ? null : _parseSchedule(schedule);
+      final now = DateTime.now();
       final response = ApiZeroOilForecastResponse(
         forecast: parsedForecast ?? usableCached?.forecast,
         schedule: parsedSchedule ?? (usableCached?.schedule ?? const []),
-        fetchedAt: DateTime.now(),
+        fetchedAt: now,
+        // 仅刷新成功的那一部分，另一部分保留原时间戳
+        forecastFetchedAt: parsedForecast != null
+            ? now
+            : usableCached?.forecastFetchedAt,
+        scheduleFetchedAt: parsedSchedule != null
+            ? now
+            : usableCached?.scheduleFetchedAt,
       );
       await prefs.setString(cacheKey, jsonEncode(response.toJson()));
       return response;
@@ -254,10 +284,14 @@ class ApiZeroOilForecastService {
       );
       if (!elapsed.isNegative && elapsed < interval) return null;
     }
-    final now = DateTime.now().millisecondsSinceEpoch;
-    await prefs.setInt(attemptKey, now);
-    if (force) await prefs.setInt(manualKey, now);
-    return _request(query);
+    final data = await _request(query);
+    // 仅在请求成功后写节流标记：失败不占坑，允许立即重试
+    if (data != null) {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await prefs.setInt(attemptKey, now);
+      if (force) await prefs.setInt(manualKey, now);
+    }
+    return data;
   }
 
   static Future<Map<String, dynamic>?> _request(

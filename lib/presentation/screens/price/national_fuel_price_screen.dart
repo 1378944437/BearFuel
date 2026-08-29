@@ -202,11 +202,12 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
     final isLoading = fuelProv.priceStatusText.startsWith('正在');
     final accent = isOnlineApi ? colors.secondary : colors.primary;
     final fetchedAt = fuelProv.priceFetchedAt;
+    final ageText = fetchedAt == null ? null : _humanizeAge(fetchedAt);
     final isCached =
         fetchedAt != null &&
         DateTime.now().difference(fetchedAt) > const Duration(minutes: 30);
     final source = isOnlineApi
-        ? 'ApiZero 当前省级油价接口${isCached ? '（本地缓存）' : ''}'
+        ? 'ApiZero 当前省级油价接口${isCached ? '（本地缓存，$ageText）' : ''}'
         : 'ApiZero 当前省级油价接口（暂未返回数据）';
     final readTime = isLoading
         ? '读取时间：读取中'
@@ -272,8 +273,11 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
     if (!price.isAvailable) {
       return _buildUnavailablePriceCard('暂无在线油价，无法测算加满一箱费用');
     }
+    if (vehicle == null) {
+      return _buildUnavailablePriceCard('请先在"爱车"中添加车辆档案，再使用加满一箱计算');
+    }
     final colors = Theme.of(context).colorScheme;
-    final capacity = vehicle?.tankCapacity ?? 50.0;
+    final capacity = vehicle.tankCapacity;
     final capacityLabel = capacity
         .toStringAsFixed(2)
         .replaceFirst(RegExp(r'\.?0+$'), '');
@@ -299,7 +303,7 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    '${vehicle?.name ?? "爱车"} · 加满一箱油测算',
+                    '${vehicle.name} · 加满一箱油测算',
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
@@ -625,6 +629,10 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
     }
     final colors = Theme.of(context).colorScheme;
     final isDark = colors.brightness == Brightness.dark;
+    // 窗口日期次日已过 → 进入"等待官方公布实际结果"阶段，不再按预测渲染
+    final windowPassed = context
+        .read<FuelPriceProvider>()
+        .isAdjustmentWindowPassed;
     final isStagnant = forecast.direction.contains('搁浅');
     final isIncrease = !isStagnant && forecast.isIncrease;
     final accent = isStagnant
@@ -661,7 +669,7 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        '下轮发改委调价窗口期预测',
+                        windowPassed ? '上一轮调价窗口已开启，等待官方公布' : '下轮发改委调价窗口期预测',
                         maxLines: 2,
                         style: TextStyle(
                           fontSize: 14,
@@ -677,13 +685,19 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: isStagnant
+                  color: windowPassed
+                      ? colors.outline
+                      : isStagnant
                       ? colors.outline
                       : (isIncrease ? Colors.red[700] : Colors.green[700]),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  isStagnant ? '搁浅' : '剩 ${forecast.daysRemaining} 天',
+                  windowPassed
+                      ? '待公布'
+                      : isStagnant
+                      ? '搁浅'
+                      : '剩 ${forecast.daysRemaining} 天',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 11,
@@ -704,7 +718,9 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            isStagnant
+            windowPassed
+                ? '窗口已于 ${DateFormatter.formatChineseYmd(forecast.nextAdjustmentDate)} 开启，官方实际调价结果以公告为准'
+                : isStagnant
                 ? '本轮预计搁浅，汽油和柴油价格暂无变动'
                 : '预计变动: ${isIncrease ? "预计上涨约" : "预计下调约"} ¥${forecast.forecastDelta.toStringAsFixed(2)} /升',
             style: TextStyle(
@@ -737,9 +753,31 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
               ),
             ],
           ),
+          const SizedBox(height: 8),
+          Builder(
+            builder: (context) {
+              final fetchedAt = context
+                  .read<FuelPriceProvider>()
+                  .forecastFetchedAt;
+              if (fetchedAt == null) return const SizedBox.shrink();
+              return Text(
+                '预测数据更新于 ${DateFormatter.formatYmdHm(fetchedAt)}（${_humanizeAge(fetchedAt)}）',
+                style: TextStyle(fontSize: 10, color: colors.onSurfaceVariant),
+              );
+            },
+          ),
         ],
       ),
     );
+  }
+
+  /// 把时间戳转成 "x 分钟前 / x 小时前 / x 天前"
+  String _humanizeAge(DateTime time) {
+    final diff = DateTime.now().difference(time);
+    if (diff.inMinutes < 1) return '刚刚';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} 分钟前';
+    if (diff.inHours < 24) return '${diff.inHours} 小时前';
+    return '${diff.inDays} 天前';
   }
 
   /// 国家调价幅度历史图，直接使用 ApiZero 调价日历返回的每吨幅度。
@@ -804,12 +842,19 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
                   leftTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
-                      reservedSize: 38,
+                      // 按实际刻度文本测量宽度，兼容 "+3000" 等宽标签
+                      reservedSize: ChartAxisUtils.reservedSizeFor(
+                        ChartAxisUtils.yTicks(minY, maxY, interval).map(
+                          (v) =>
+                              v == 0 ? '0' : '${v > 0 ? '+' : ''}${v.round()}',
+                        ),
+                        const TextStyle(fontSize: 9),
+                      ),
                       interval: interval,
                       getTitlesWidget: (value, meta) => Text(
                         value == 0
                             ? '0'
-                            : '${value > 0 ? '+' : ''}${value.toInt()}',
+                            : '${value > 0 ? '+' : ''}${value.round()}',
                         style: TextStyle(
                           fontSize: 9,
                           color: colors.onSurfaceVariant,
@@ -821,17 +866,29 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
                     sideTitles: SideTitles(
                       showTitles: true,
                       reservedSize: 28,
-                      interval: (points.length / 5)
-                          .ceil()
-                          .clamp(1, points.length)
-                          .toDouble(),
+                      // 固定步距 1，由标签内过滤决定显示，避免强制绘制
+                      // max 刻度造成相邻日期重叠
+                      interval: 1,
                       getTitlesWidget: (value, meta) {
-                        final index = value.toInt();
+                        final index = value.round();
                         if (index < 0 || index >= points.length) {
                           return const SizedBox.shrink();
                         }
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 5),
+                        final step = (points.length / 5).ceil().clamp(
+                          1,
+                          points.length,
+                        );
+                        if (!ChartAxisUtils.shouldShowXLabel(
+                          index,
+                          points.length,
+                          step,
+                        )) {
+                          return const SizedBox.shrink();
+                        }
+                        return SideTitleWidget(
+                          axisSide: meta.axisSide,
+                          space: 5,
+                          fitInside: SideTitleFitInsideData.fromTitleMeta(meta),
                           child: Text(
                             DateFormatter.formatMonthDay(points[index].date),
                             style: TextStyle(
@@ -936,7 +993,7 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
               final summary = item.summary;
               final displayStatus =
                   item.status == '已过' && amount == null && summary == null
-                  ? '已过，接口未返回实际调价结果'
+                  ? '已过，官方未公布实际调价金额'
                   : item.status;
               final dateLabel =
                   '${item.date.year}年\n${item.date.month.toString().padLeft(2, '0')}月${item.date.day.toString().padLeft(2, '0')}日';

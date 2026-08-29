@@ -197,11 +197,14 @@ class _StatisticsScreenState extends State<StatisticsScreen>
       0.0,
       (sum, r) => sum + (r.costPerKm ?? 0.0) * r.distance!,
     );
+    // 所选范围无完成周期时回退为全历史平均，界面需明确标注避免误读
+    final bool isFallbackAverage =
+        validDistance <= 0 &&
+        records.isNotEmpty &&
+        refuelProv.summary.averageConsumption > 0;
     final double rangeAvgConsumption = validDistance > 0
         ? (validFuel / validDistance) * 100.0
-        : (records.isNotEmpty && refuelProv.summary.averageConsumption > 0
-              ? refuelProv.summary.averageConsumption
-              : 0.0);
+        : (isFallbackAverage ? refuelProv.summary.averageConsumption : 0.0);
     final double rangeCostPerKm = validDistance > 0
         ? validCost / validDistance
         : 0.0;
@@ -293,7 +296,10 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                           child: InkWell(
                             onTap: () {
                               HapticFeedback.selectionClick();
-                              setState(() => _selectedRange = range);
+                              setState(() {
+                                _selectedRange = range;
+                                _customDateRange = null;
+                              });
                             },
                             borderRadius: BorderRadius.circular(20),
                             child: Container(
@@ -412,6 +418,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                       expenses,
                       dynamicRangeSummary,
                       rangeOtherCost,
+                      isFallbackAverage,
                     ),
 
                     // 2. 油耗进阶分析看板
@@ -419,6 +426,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                       context,
                       records,
                       rangeAvgConsumption,
+                      isFallbackAverage,
                     ),
 
                     // 3. 环境气温看板
@@ -449,6 +457,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     List<ExpenseRecordModel> expenses,
     FuelCalculationSummary summary,
     double totalOtherExpense,
+    bool isFallbackAverage,
   ) {
     final expenseShares = _expenseStructureCache.get(
       [records, expenses],
@@ -472,7 +481,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
       physics: const BouncingScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
       children: [
-        _buildSummaryGrid(summary, totalOtherExpense),
+        _buildSummaryGrid(summary, totalOtherExpense, isFallbackAverage),
         const SizedBox(height: 8),
         _buildPeriodStatsCard(context, periodStats),
         const SizedBox(height: 8),
@@ -488,6 +497,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     BuildContext context,
     List<RefuelRecordModel> records,
     double avgConsumption,
+    bool isFallbackAverage,
   ) {
     final singleConsumptionTrends = _consumptionTrendCache.get([
       records,
@@ -512,6 +522,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
         // 1. 单次百公里油耗波动走势图
         _buildLineChartCard(
           context: context,
+          isFallbackAverage: isFallbackAverage,
           title: '单次百公里油耗走势',
           subtitle: '记录每次实测波动，虚线为均值基准线',
           dataPoints: singleConsumptionTrends,
@@ -525,8 +536,9 @@ class _StatisticsScreenState extends State<StatisticsScreen>
         // 2. 累计平均油耗演进过程图 (Evolution Curve 平滑收敛曲线)
         _buildLineChartCard(
           context: context,
+          isFallbackAverage: isFallbackAverage,
           title: '累计平均油耗演进过程',
-          subtitle: '平滑收敛曲线，展示全车平稳油耗水准',
+          subtitle: '平滑收敛曲线，展示全车平稳油耗水准（已忽略异常高值点）',
           dataPoints: movingAvgEvolution,
           baselineValue: avgConsumption,
           unit: 'L/100km',
@@ -611,7 +623,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '实时天气 · ${weather.cityName.isEmpty ? city : weather.cityName}',
+                  '${weather.fetchedAt.isBefore(DateTime.now().subtract(const Duration(hours: 1))) ? '历史快照' : '实时天气'} · ${weather.cityName.isEmpty ? city : weather.cityName}',
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 4),
@@ -632,7 +644,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                   ),
                 const SizedBox(height: 2),
                 Text(
-                  '墨迹天气 · ${weatherProv.historyWindow.coverageLabel}',
+                  '墨迹天气 · ${weatherProv.historyWindow.coverageLabel} · 数据时间 ${DateFormatter.formatYmdHm(weather.fetchedAt)}',
                   style: TextStyle(
                     fontSize: 10,
                     color: colors.onSurfaceVariant,
@@ -782,7 +794,8 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '关联已保存的 ${weatherCity ?? '实际定位地区'} 每日天气快照，揭示温度变化与油耗的关系',
+                  '关联已保存的 ${weatherCity ?? '实际定位地区'} 每日天气快照，揭示温度变化与油耗的关系'
+                  '${displayTempVsCons.any((p) => p.monthLabel.contains('年')) ? '（数据跨年，横轴为月份）' : ''}',
                   style: TextStyle(
                     fontSize: 11,
                     color: colors.onSurfaceVariant,
@@ -812,6 +825,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                       gridData: FlGridData(
                         show: true,
                         drawVerticalLine: false,
+                        horizontalInterval: chartYInterval,
                         getDrawingHorizontalLine: (value) => FlLine(
                           color: colors.outline.withValues(alpha: 0.28),
                           strokeWidth: 1,
@@ -856,10 +870,18 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                                 displayTempVsCons.length,
                                 tempChartXStep,
                               )) {
-                                return Padding(
-                                  padding: const EdgeInsets.only(top: 4),
+                                // 跨年数据横轴只保留"N月"，年份在副标题说明
+                                final label = displayTempVsCons[idx].monthLabel
+                                    .replaceAll(RegExp(r'^\d{4}年'), '');
+                                return SideTitleWidget(
+                                  axisSide: meta.axisSide,
+                                  space: 4,
+                                  fitInside:
+                                      SideTitleFitInsideData.fromTitleMeta(
+                                        meta,
+                                      ),
                                   child: Text(
-                                    displayTempVsCons[idx].monthLabel,
+                                    label,
                                     style: TextStyle(
                                       fontSize: 10,
                                       color: colors.onSurfaceVariant,
@@ -874,7 +896,19 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                         leftTitles: AxisTitles(
                           sideTitles: SideTitles(
                             showTitles: true,
-                            reservedSize: 28,
+                            reservedSize: ChartAxisUtils.reservedSizeFor(
+                              ChartAxisUtils.yTicks(
+                                chartMinY,
+                                chartMaxY,
+                                chartYInterval,
+                              ).map(
+                                (v) => ChartAxisUtils.formatAxisValue(
+                                  v,
+                                  chartYInterval,
+                                ),
+                              ),
+                              const TextStyle(fontSize: 10),
+                            ),
                             interval: chartYInterval,
                             getTitlesWidget: (val, meta) {
                               return Text(
@@ -948,6 +982,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
   Widget _buildSummaryGrid(
     FuelCalculationSummary summary,
     double totalOtherExpense,
+    bool isFallbackAverage,
   ) {
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -958,7 +993,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
               child: _buildMetricItem(
                 '平均百公里油耗',
                 '${summary.averageConsumption.toStringAsFixed(2)} L',
-                '综合百公里实测',
+                isFallbackAverage ? '所选范围暂无完成周期，展示全历史平均' : '综合百公里实测',
                 const Color(0xFFFF5A24),
               ),
             ),
@@ -1322,11 +1357,15 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            '行驶 +${s.totalDistance.toStringAsFixed(2)}km · 消耗 ${s.totalFuel.toStringAsFixed(2)}L · 记账 ${s.recordCount}笔',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: colors.onSurfaceVariant,
+                          Expanded(
+                            child: Text(
+                              '行驶 +${s.totalDistance.toStringAsFixed(2)}km · 消耗 ${s.totalFuel.toStringAsFixed(2)}L · 记账 ${s.recordCount}笔',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: colors.onSurfaceVariant,
+                              ),
                             ),
                           ),
                           if (s.diffFromPrevious != null)
@@ -1374,6 +1413,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
   }
 
   Widget _buildLineChartCard({
+    bool isFallbackAverage = false,
     required BuildContext context,
     required String title,
     required String subtitle,
@@ -1409,12 +1449,22 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     final values = dataPoints.map((p) => p.value).toList();
     final rawMin = values.reduce((a, b) => a < b ? a : b);
     final rawMax = values.reduce((a, b) => a > b ? a : b);
-    final minY = (rawMin * 0.9).floorToDouble();
-    final maxY = (rawMax * 1.1).ceilToDouble();
-    final safeMaxY = (maxY <= minY) ? minY + 4.0 : maxY;
+    // 0.1 粒度收窄纵轴窗口：¥/km、¥/L 等小量程不再被整数 floor/ceil 拉宽
+    final minY = ((rawMin * 0.9) * 10).floorToDouble() / 10;
+    final maxY = ((rawMax * 1.1) * 10).ceilToDouble() / 10;
+    final safeMaxY = (maxY <= minY) ? minY + 1.0 : maxY;
     final span = safeMaxY - minY;
     final double yInterval = ChartAxisUtils.niceInterval(span, maxTicks: 4);
     final trendXStep = ChartAxisUtils.xLabelStep(dataPoints.length);
+    final yAxisLabels = ChartAxisUtils.yTicks(
+      minY,
+      safeMaxY,
+      yInterval,
+    ).map((v) => ChartAxisUtils.formatAxisValue(v, yInterval, unit: unit));
+    final yAxisReserved = ChartAxisUtils.reservedSizeFor(
+      yAxisLabels,
+      const TextStyle(fontSize: 10),
+    );
 
     return CustomCard(
       margin: EdgeInsets.zero,
@@ -1434,7 +1484,9 @@ class _StatisticsScreenState extends State<StatisticsScreen>
               ),
               if (baselineValue != null && baselineValue > 0)
                 Text(
-                  '均值: ${baselineValue.toStringAsFixed(2)} $unit',
+                  isFallbackAverage
+                      ? '均值(全历史): ${baselineValue.toStringAsFixed(2)} $unit'
+                      : '均值: ${baselineValue.toStringAsFixed(2)} $unit',
                   style: TextStyle(
                     fontSize: 11,
                     color: lineColor,
@@ -1592,8 +1644,13 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                           count,
                           trendXStep,
                         )) {
-                          return Padding(
-                            padding: const EdgeInsets.only(top: 4),
+                          // fitInside 让首尾标签自动内收，不再压出绘图区
+                          return SideTitleWidget(
+                            axisSide: meta.axisSide,
+                            space: 4,
+                            fitInside: SideTitleFitInsideData.fromTitleMeta(
+                              meta,
+                            ),
                             child: Text(
                               dataPoints[idx].label,
                               style: TextStyle(
@@ -1611,12 +1668,16 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                     sideTitles: SideTitles(
                       showTitles: true,
                       interval: yInterval,
-                      reservedSize: 32,
+                      reservedSize: yAxisReserved,
                       getTitlesWidget: (val, meta) {
                         return Padding(
                           padding: const EdgeInsets.only(right: 4),
                           child: Text(
-                            ChartAxisUtils.formatAxisValue(val, yInterval),
+                            ChartAxisUtils.formatAxisValue(
+                              val,
+                              yInterval,
+                              unit: unit,
+                            ),
                             style: TextStyle(
                               fontSize: 10,
                               color: colors.onSurfaceVariant,
@@ -1708,7 +1769,10 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                   return PieChartSectionData(
                     color: color,
                     value: s.percentage,
-                    title: '${s.percentage.toStringAsFixed(0)}%',
+                    // 小于 5% 的切片标题互相压盖，占比归入图例展示
+                    title: s.percentage >= 5
+                        ? '${s.percentage.toStringAsFixed(0)}%'
+                        : '',
                     radius: 42,
                     titleStyle: const TextStyle(
                       fontSize: 11,
@@ -1741,9 +1805,14 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                     ),
                   ),
                   const SizedBox(width: 4),
-                  Text(
-                    '${s.category}: ¥${s.totalAmount.toStringAsFixed(0)} (${s.percentage}%)',
-                    style: const TextStyle(fontSize: 11),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 150),
+                    child: Text(
+                      '${s.category}: ¥${s.totalAmount.toStringAsFixed(0)} (${s.percentage}%)',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 11),
+                    ),
                   ),
                 ],
               );

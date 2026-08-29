@@ -202,10 +202,10 @@ class DatabaseHelper {
     final defaultVehicleId = const Uuid().v4();
     await db.insert('vehicles', {
       'id': defaultVehicleId,
-      'name': '默认爱车',
-      'plate_number': '京A·88888',
-      'brand': '家用燃油车',
-      'model': '标准版',
+      'name': '示例车辆（可编辑）',
+      'plate_number': null,
+      'brand': null,
+      'model': null,
       'tank_capacity': 50.0,
       'default_fuel_type': '92# 汽油',
       'initial_mileage': 0.0,
@@ -779,6 +779,11 @@ class DatabaseHelper {
 
     bool flag(dynamic value) => value is int && (value == 0 || value == 1);
 
+    // 气温可为负（冬季真实数据），按物理合理区间校验而非非负
+    bool temperature(dynamic value) {
+      return value is num && value.isFinite && value >= -100 && value <= 60;
+    }
+
     bool validRows(
       dynamic value,
       bool Function(Map<String, dynamic>) validator, {
@@ -866,12 +871,9 @@ class DatabaseHelper {
           date(row['snapshot_date']) &&
           text(row['source']) &&
           date(row['fetched_at']) &&
-          (row['temperature'] == null ||
-              number(row['temperature'], positive: false)) &&
-          (row['temp_high'] == null ||
-              number(row['temp_high'], positive: false)) &&
-          (row['temp_low'] == null ||
-              number(row['temp_low'], positive: false)) &&
+          (row['temperature'] == null || temperature(row['temperature'])) &&
+          (row['temp_high'] == null || temperature(row['temp_high'])) &&
+          (row['temp_low'] == null || temperature(row['temp_low'])) &&
           (row['aqi'] == null || row['aqi'] is int);
     }
 

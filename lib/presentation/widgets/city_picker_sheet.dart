@@ -87,6 +87,11 @@ class _CityPickerSheetState extends State<CityPickerSheet> {
       if (result.isSuccess && result.location != null) {
         final city = result.location!.cityName;
         setState(() => _locatedCity = city);
+        if (result.location!.source == LocationSource.cachedLocation) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('当前使用的是缓存的定位结果')));
+        }
         // 定位成功直接返回该城市
         Navigator.pop(context, city);
       } else {

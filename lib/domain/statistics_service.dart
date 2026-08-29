@@ -656,7 +656,11 @@ class StatisticsService {
           (sum, val) => sum + (val - mean) * (val - mean),
         ) /
         consumptions.length;
-    final stdDev = variance > 0 ? math.sqrt(variance) : 0.8;
+    // 样本完全无波动时不存在有意义的离群阈值，直接返回空诊断
+    if (variance <= 0) {
+      return const [];
+    }
+    final stdDev = math.sqrt(variance);
     final highThreshold = mean + (stdDev * 1.15).clamp(0.7, 2.5);
     final lowThreshold = mean - (stdDev * 1.05).clamp(0.6, 2.2);
 

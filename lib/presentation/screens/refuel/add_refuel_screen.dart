@@ -183,7 +183,14 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
             pickedTime.minute,
           );
         } else {
-          _selectedDate = pickedDate;
+          // 取消时间选择时保留原有时间，仅替换日期，避免时间被重置为 00:00
+          _selectedDate = DateTime(
+            pickedDate.year,
+            pickedDate.month,
+            pickedDate.day,
+            _selectedDate.hour,
+            _selectedDate.minute,
+          );
         }
       });
     }

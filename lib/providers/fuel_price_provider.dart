@@ -60,6 +60,19 @@ class FuelPriceProvider extends ChangeNotifier {
       _oilForecastResponse?.forecast?.toDomain() ??
       FuelPriceService.getAdjustmentForecast();
 
+  /// 预测数据成功拉取时间（用于界面标注缓存年龄）
+  DateTime? get forecastFetchedAt =>
+      _oilForecastResponse?.forecastFetchedAt ??
+      _oilForecastResponse?.fetchedAt;
+
+  /// 接口给出的调价窗口日期是否已经过去（窗口于当日 24:00 关闭）
+  bool get isAdjustmentWindowPassed {
+    final date = _oilForecastResponse?.forecast?.nextAdjustmentDate;
+    if (date == null) return false;
+    final windowEnd = DateTime(date.year, date.month, date.day + 1);
+    return windowEnd.isBefore(DateTime.now());
+  }
+
   /// 从持久化本地缓存加载用户常驻城市
   Future<void> _initFromStorage() async {
     try {
@@ -192,12 +205,37 @@ class FuelPriceProvider extends ChangeNotifier {
         return;
       }
       _oilForecastResponse = response;
-      if (response.forecast != null && response.schedule.isNotEmpty) {
-        _forecastStatusText = '已读取调价预测和 ${response.schedule.length} 个调价日历记录';
-      } else if (response.schedule.isNotEmpty) {
-        _forecastStatusText = '已读取 ${response.schedule.length} 个调价日历记录，预测暂不可用';
-      } else {
-        _forecastStatusText = '已读取调价预测，历史调价日历暂不可用';
+      final fromCache =
+          ApiZeroOilForecastService.lastErrorMessage?.contains('缓存') == true;
+      final baseText = response.forecast != null && response.schedule.isNotEmpty
+          ? '已读取调价预测和 ${response.schedule.length} 个调价日历记录'
+          : response.schedule.isNotEmpty
+          ? '已读取 ${response.schedule.length} 个调价日历记录，预测暂不可用'
+          : '已读取调价预测，历史调价日历暂不可用';
+      _forecastStatusText = fromCache ? '$baseText（本地缓存）' : baseText;
+
+      // 窗口已过但官方结果尚未回填时，自动补拉一次最新日历（按窗口日期只补一次）
+      if (isAdjustmentWindowPassed) {
+        final windowDate = _oilForecastResponse?.forecast?.nextAdjustmentDate;
+        final backfillKey =
+            'adjustment_backfill_${windowDate?.toIso8601String().substring(0, 10) ?? ''}';
+        final prefs = await SharedPreferences.getInstance();
+        if (!prefs.containsKey(backfillKey)) {
+          await prefs.setBool(backfillKey, true);
+          final refreshed = await ApiZeroOilForecastService.getCachedOrFetch(
+            province: _currentProvince,
+            year: DateTime.now().year,
+            force: true,
+          );
+          if (refreshed != null) {
+            _oilForecastResponse = refreshed;
+          }
+        }
+      }
+      if (isAdjustmentWindowPassed) {
+        final windowDate = _oilForecastResponse?.forecast?.nextAdjustmentDate;
+        _forecastStatusText =
+            '上一轮调价窗口（${windowDate?.month}/${windowDate?.day}）已开启，等待官方公布实际调价';
       }
     } finally {
       _isRefreshingForecast = false;

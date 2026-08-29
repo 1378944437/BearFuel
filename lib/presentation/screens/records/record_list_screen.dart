@@ -38,6 +38,7 @@ class _RecordListScreenState extends State<RecordListScreen>
   String _searchQuery = '';
   bool _hasSeenSwipeHint = true; // 默认为 true，待异步加载
   bool _showBackToTop = false;
+  int _currentTabIndex = 0; // 悬浮按钮仅服务加油列表
 
   // 1. 综合筛选条件
   String _selectedFuelType = '全部';
@@ -53,6 +54,12 @@ class _RecordListScreenState extends State<RecordListScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      if (_tabController.indexIsChanging) return;
+      if (_currentTabIndex != _tabController.index) {
+        setState(() => _currentTabIndex = _tabController.index);
+      }
+    });
     _scrollController.addListener(_onScroll);
     _checkSwipeHintPref();
   }
@@ -676,6 +683,10 @@ class _RecordListScreenState extends State<RecordListScreen>
           ValueListenableBuilder<bool>(
             valueListenable: widget.navVisible,
             builder: (context, navVisible, child) {
+              // 回顶/搜索仅作用于加油列表，费用页签下隐藏避免误导
+              if (_currentTabIndex != 0) {
+                return const SizedBox.shrink();
+              }
               final double bottomInset = MediaQuery.of(context).padding.bottom;
               return AnimatedPositioned(
                 duration: const Duration(milliseconds: 220),
