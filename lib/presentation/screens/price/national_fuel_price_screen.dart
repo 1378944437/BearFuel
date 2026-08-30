@@ -24,7 +24,6 @@ class NationalFuelPriceScreen extends StatefulWidget {
 }
 
 class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
-
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -614,17 +613,17 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
             textBaseline: TextBaseline.alphabetic,
             children: [
               Text(
-                price.toStringAsFixed(2),
+                price > 0 ? price.toStringAsFixed(2) : '--',
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w900,
-                  color: color,
+                  color: price > 0 ? color : colors.onSurfaceVariant,
                   letterSpacing: -0.5,
                 ),
               ),
               const SizedBox(width: 4),
               Text(
-                unit,
+                price > 0 ? unit : '暂无数据',
                 style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
               ),
             ],

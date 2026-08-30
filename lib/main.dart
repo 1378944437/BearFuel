@@ -21,6 +21,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AmapKeyStore.load();
   await FuelPriceApiConfigStore.load();
+  await FuelPriceSourceStore.load();
   await WeatherApiConfigStore.load();
 
   // 1. 全局异常与闪退防护（捕获所有同步/异步未捕获异常，绝不闪退白屏）

@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import '../../../core/utils/external_url_launcher.dart';
 import '../../../data/services/apizero_fuel_price_service.dart';
 import '../../../data/services/fuel_price_api_config.dart';
+import '../../../providers/fuel_price_provider.dart';
+import 'package:provider/provider.dart';
 
 class FuelPriceApiSettingsScreen extends StatefulWidget {
   const FuelPriceApiSettingsScreen({super.key});
@@ -161,89 +163,165 @@ class _FuelPriceApiSettingsScreenState
     );
   }
 
+  Future<void> _switchSource(String? value) async {
+    if (value == null || value == FuelPriceSourceStore.source) return;
+    await FuelPriceSourceStore.save(value);
+    if (!mounted) return;
+    setState(() {});
+    // 立即按新数据源重新读取油价
+    await context.read<FuelPriceProvider>().refreshCurrentPrice();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          value == FuelPriceSourceStore.xxyh
+              ? '已切换为小熊油耗网页数据源'
+              : '已切换为 ApiZero 接口数据源',
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final isConfigured = _keyController.text.trim().isNotEmpty;
+    final useXxyh = FuelPriceSourceStore.useXxyh;
     return Scaffold(
       appBar: AppBar(title: const Text('实时油价服务设置')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          TextFormField(
-            controller: _keyController,
-            obscureText: _obscureKey,
-            onChanged: (_) => setState(() {}),
-            decoration: InputDecoration(
-              labelText: 'ApiZero 油价 API Key（可选）',
-              hintText: '留空使用匿名请求',
-              prefixIcon: const Icon(AppIcons.key_outlined),
-              suffixIcon: IconButton(
-                tooltip: _obscureKey ? '显示 Key' : '隐藏 Key',
-                icon: Icon(
-                  _obscureKey
-                      ? AppIcons.visibility_outlined
-                      : AppIcons.visibility_off_outlined,
-                ),
-                onPressed: () => setState(() => _obscureKey = !_obscureKey),
-              ),
+          const Text(
+            '油价数据源',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '两种数据源二选一，均可独立支撑运行；无论选择哪种，'
+            '小熊油耗网页数据始终作为校准与备用源，接口油价与其不一致时以网站为准。',
+            style: TextStyle(
+              fontSize: 12,
+              color: colors.onSurfaceVariant,
+              height: 1.4,
             ),
           ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Icon(
-                isConfigured
-                    ? AppIcons.check_circle_outline
-                    : AppIcons.warning_amber,
-                size: 19,
-                color: isConfigured ? Colors.green : Colors.orange,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  isConfigured
-                      ? '已配置，将使用 ApiZero 实时油价与调价服务'
-                      : '未配置 Key，将尝试 ApiZero 匿名查询',
+          const SizedBox(height: 8),
+          RadioGroup<String>(
+            groupValue: FuelPriceSourceStore.source,
+            onChanged: (v) => _switchSource(v),
+            child: const Column(
+              children: [
+                RadioListTile<String>(
+                  value: FuelPriceSourceStore.apizero,
+                  title: Text('ApiZero 接口（推荐）'),
+                  subtitle: Text('92/95/98/0 四标号齐全，含调价预测与日历'),
+                ),
+                RadioListTile<String>(
+                  value: FuelPriceSourceStore.xxyh,
+                  title: Text('小熊油耗网页'),
+                  subtitle: Text('无需 Key，仅 92/95/0 柴油；98 号无在线数据'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Divider(),
+          const SizedBox(height: 8),
+          Opacity(
+            opacity: useXxyh ? 0.55 : 1.0,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'ApiZero Key（仅接口数据源需要）',
                   style: TextStyle(
-                    color: isConfigured ? colors.onSurface : Colors.orange[800],
-                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: useXxyh ? colors.onSurfaceVariant : null,
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          FilledButton.icon(
-            onPressed: _isSaving || _isTesting ? null : _saveKey,
-            icon: _isSaving
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(AppIcons.save_outlined),
-            label: const Text('保存 Key'),
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: _isSaving || _isTesting ? null : _testConnection,
-            icon: _isTesting
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(AppIcons.network_check_outlined),
-            label: const Text('测试连接（北京）'),
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: _isSaving || _isTesting || !isConfigured
-                ? null
-                : _clearKey,
-            icon: const Icon(AppIcons.delete_outline),
-            label: const Text('清除本机 Key'),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _keyController,
+                  obscureText: _obscureKey,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    labelText: 'ApiZero 油价 API Key（可选）',
+                    hintText: '留空使用匿名请求',
+                    prefixIcon: const Icon(AppIcons.key_outlined),
+                    suffixIcon: IconButton(
+                      tooltip: _obscureKey ? '显示 Key' : '隐藏 Key',
+                      icon: Icon(
+                        _obscureKey
+                            ? AppIcons.visibility_outlined
+                            : AppIcons.visibility_off_outlined,
+                      ),
+                      onPressed: () =>
+                          setState(() => _obscureKey = !_obscureKey),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Icon(
+                      isConfigured
+                          ? AppIcons.check_circle_outline
+                          : AppIcons.warning_amber,
+                      size: 19,
+                      color: isConfigured ? Colors.green : Colors.orange,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        isConfigured
+                            ? '已配置，将使用 ApiZero 实时油价与调价服务'
+                            : '未配置 Key，将尝试 ApiZero 匿名查询',
+                        style: TextStyle(
+                          color: isConfigured
+                              ? colors.onSurface
+                              : Colors.orange[800],
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                FilledButton.icon(
+                  onPressed: _isSaving || _isTesting ? null : _saveKey,
+                  icon: _isSaving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(AppIcons.save_outlined),
+                  label: const Text('保存 Key'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: _isSaving || _isTesting ? null : _testConnection,
+                  icon: _isTesting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(AppIcons.network_check_outlined),
+                  label: const Text('测试连接（北京）'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: _isSaving || _isTesting || !isConfigured
+                      ? null
+                      : _clearKey,
+                  icon: const Icon(AppIcons.delete_outline),
+                  label: const Text('清除本机 Key'),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 12),
           Text(

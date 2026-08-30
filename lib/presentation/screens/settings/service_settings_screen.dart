@@ -96,10 +96,12 @@ class _ServiceSettingsScreenState extends State<ServiceSettingsScreen> {
             icon: AppIcons.local_gas_station_outlined,
             color: const Color(0xFF007D83),
             title: '实时油价服务',
-            subtitle: FuelPriceApiConfigStore.hasApiKey
-                ? 'ApiZero 个人 Key 已配置'
-                : '当前使用 ApiZero 匿名模式，可选配置个人 Key',
-            configured: FuelPriceApiConfigStore.hasApiKey,
+            subtitle: FuelPriceSourceStore.useXxyh
+                ? '数据源：小熊油耗网页（无需 Key）'
+                : FuelPriceApiConfigStore.hasApiKey
+                ? '数据源：ApiZero（个人 Key 已配置）'
+                : '数据源：ApiZero（匿名模式，可选配置个人 Key）',
+            configured: FuelPriceSourceStore.useXxyh || FuelPriceApiConfigStore.hasApiKey,
             optional: true,
             onTap: () => Navigator.push(
               context,

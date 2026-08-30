@@ -1,4 +1,5 @@
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// ApiZero 统一油价服务的本机 Key 配置。
 /// 接口地址和认证方式固定，避免普通使用者误配请求协议。
@@ -54,5 +55,41 @@ class FuelPriceApiConfigStore {
     }
     await _storage.write(key: _storageKey, value: key);
     _apiKey = key;
+  }
+}
+
+/// 油价数据源选择：ApiZero 接口（默认，92/95/98/0 齐全）或
+/// 小熊油耗网页（无需 Key，仅 92/95/0，可完全独立支撑运行）。
+/// 两种模式下小熊油耗网页始终作为校准与备用源。
+class FuelPriceSourceStore {
+  static const String apizero = 'apizero';
+  static const String xxyh = 'xxyh';
+  static const String _key = 'fuel_price_source';
+
+  static String _source = apizero;
+
+  static String get source => _source;
+  static bool get useXxyh => _source == xxyh;
+
+  static Future<void> load() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getString(_key);
+      if (saved == xxyh) {
+        _source = xxyh;
+      } else if (saved == apizero) {
+        _source = apizero;
+      }
+    } catch (_) {
+      _source = apizero;
+    }
+  }
+
+  static Future<void> save(String value) async {
+    _source = value == xxyh ? xxyh : apizero;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_key, _source);
+    } catch (_) {}
   }
 }
