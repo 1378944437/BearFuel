@@ -69,6 +69,11 @@ class FuelPriceProvider extends ChangeNotifier {
       _oilForecastResponse?.forecastFetchedAt ??
       _oilForecastResponse?.fetchedAt;
 
+  /// 调价日历（历史明细）成功拉取时间（用于界面标注缓存年龄）
+  DateTime? get scheduleFetchedAt =>
+      _oilForecastResponse?.scheduleFetchedAt ??
+      _oilForecastResponse?.fetchedAt;
+
   /// 接口给出的调价窗口日期是否已经过去（窗口于当日 24:00 关闭）
   bool get isAdjustmentWindowPassed {
     final date = _oilForecastResponse?.forecast?.nextAdjustmentDate;

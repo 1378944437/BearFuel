@@ -201,7 +201,7 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
           const SizedBox(height: 12),
 
           // 6. 历史调价清单流水
-          _buildHistoricalLogList(history),
+          _buildHistoricalLogList(history, fuelProv.scheduleFetchedAt),
         ],
       ),
     );
@@ -1213,7 +1213,10 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
   }
 
   /// 近期国家调价日历明细。
-  Widget _buildHistoricalLogList(List<ApiZeroAdjustmentScheduleItem> history) {
+  Widget _buildHistoricalLogList(
+    List<ApiZeroAdjustmentScheduleItem> history,
+    DateTime? fetchedAt,
+  ) {
     final colors = Theme.of(context).colorScheme;
     final isDark = colors.brightness == Brightness.dark;
     final items = history.where((item) => !item.isPending).toList()
@@ -1230,6 +1233,15 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
               color: colors.onSurface,
             ),
           ),
+          if (fetchedAt != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              '日历数据获取于 ${_humanizeAge(fetchedAt)}'
+              '${DateTime.now().difference(fetchedAt).inMinutes >= 30 ? "（本地缓存，手动更新可刷新）" : ""}；'
+              '"已过"窗口的金额以官方公布回填为准',
+              style: TextStyle(fontSize: 10, color: colors.onSurfaceVariant),
+            ),
+          ],
           const SizedBox(height: 10),
           if (items.isEmpty)
             Text('暂无在线调价日历数据', style: TextStyle(color: colors.onSurfaceVariant))
