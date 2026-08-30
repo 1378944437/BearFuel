@@ -15,7 +15,6 @@ import 'providers/weather_provider.dart';
 import 'data/services/amap_key_store.dart';
 import 'data/services/fuel_price_api_config.dart';
 import 'data/services/weather_api_config.dart';
-import 'data/services/ai_audit_config_store.dart';
 import 'presentation/screens/main_navigation_screen.dart';
 
 void main() async {
@@ -23,7 +22,6 @@ void main() async {
   await AmapKeyStore.load();
   await FuelPriceApiConfigStore.load();
   await WeatherApiConfigStore.load();
-  await AiAuditConfigStore.load();
 
   // 1. 全局异常与闪退防护（捕获所有同步/异步未捕获异常，绝不闪退白屏）
   FlutterError.onError = (FlutterErrorDetails details) {

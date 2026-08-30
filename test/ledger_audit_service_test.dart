@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:bearfuel/data/models/refuel_record_model.dart';
 import 'package:bearfuel/data/services/apizero_fuel_price_service.dart';
 import 'package:bearfuel/domain/fuel_price_service.dart';
+import 'package:bearfuel/domain/ledger_audit_rules.dart';
 import 'package:bearfuel/domain/ledger_audit_service.dart';
 
 RefuelRecordModel record({
@@ -315,6 +316,107 @@ void main() {
       expect(
         findings.any((f) => f.findingType == LedgerFindingType.futureDate),
         isTrue,
+      );
+    });
+
+    test('规则库：关闭规则后不再产生对应发现，阈值可调整', () {
+      final records = [
+        record(
+          date: DateTime(2026, 8, 1),
+          mileage: 10000,
+          amount: 40.0,
+          price: 8.0,
+          total: 300.0, // 与量价差 20 元，默认必报
+        ),
+      ];
+
+      final withDefault = LedgerAuditService.runLocalRules(
+        records: records,
+        dataHashOf: LedgerAuditService.hashRecord,
+      );
+      expect(
+        withDefault.any((f) => f.findingType == AuditRuleType.amountMismatch),
+        true,
+      );
+
+      // 关闭金额规则：不再报
+      final disabledSet = AuditRuleSet.builtinDefault()
+        ..rules = [
+          AuditRuleConfig.defaultFor(
+            AuditRuleType.amountMismatch,
+            enabled: false,
+          ),
+          for (final type in AuditRuleType.all)
+            if (type != AuditRuleType.amountMismatch)
+              AuditRuleConfig.defaultFor(type),
+        ];
+      final withDisabled = LedgerAuditService.runLocalRules(
+        records: records,
+        dataHashOf: LedgerAuditService.hashRecord,
+        ruleSet: disabledSet,
+      );
+      expect(
+        withDisabled.any((f) => f.findingType == AuditRuleType.amountMismatch),
+        false,
+      );
+
+      // 放宽容差到 100 元：20 元差异不再报
+      final looseSet = AuditRuleSet.builtinDefault()
+        ..rules = [
+          AuditRuleConfig.defaultFor(
+            AuditRuleType.amountMismatch,
+          ).copyWith(params: {'tolerance': 100}),
+          for (final type in AuditRuleType.all)
+            if (type != AuditRuleType.amountMismatch)
+              AuditRuleConfig.defaultFor(type),
+        ];
+      final withLoose = LedgerAuditService.runLocalRules(
+        records: records,
+        dataHashOf: LedgerAuditService.hashRecord,
+        ruleSet: looseSet,
+      );
+      expect(
+        withLoose.any((f) => f.findingType == AuditRuleType.amountMismatch),
+        false,
+      );
+    });
+
+    test('规则库：未来日期允许天数可按规则放宽', () {
+      final future = [
+        record(
+          date: DateTime.now().add(const Duration(days: 3)),
+          mileage: 100,
+          amount: 30.0,
+          price: 8.0,
+          total: 240.0,
+        ),
+      ];
+      final strict = LedgerAuditService.runLocalRules(
+        records: future,
+        dataHashOf: LedgerAuditService.hashRecord,
+      );
+      expect(
+        strict.any((f) => f.findingType == AuditRuleType.futureDate),
+        true,
+      );
+
+      final lenientSet = AuditRuleSet.builtinDefault()
+        ..rules = [
+          AuditRuleConfig.defaultFor(
+            AuditRuleType.futureDate,
+          ).copyWith(params: {'allowedDays': 7}),
+          for (final type in AuditRuleType.all)
+            if (type != AuditRuleType.futureDate)
+              AuditRuleConfig.defaultFor(type),
+        ];
+      final lenient = LedgerAuditService.runLocalRules(
+        records: future,
+        dataHashOf: LedgerAuditService.hashRecord,
+        ruleSet: lenientSet,
+      );
+      expect(
+        lenient.any((f) => f.findingType == AuditRuleType.futureDate),
+        false,
       );
     });
 

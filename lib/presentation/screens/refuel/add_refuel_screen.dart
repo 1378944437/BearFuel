@@ -335,17 +335,10 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
           unawaited(
             auditProv.runLocalRulesAudit(
               records: refuelProv.records,
-              recordById: (id) {
-                for (final r in refuelProv.records) {
-                  if (r.id == id) return r;
-                }
-                return null;
-              },
               tankCapacity: currentVehicle.tankCapacity,
               priceSnapshot: priceProv.priceSnapshotFor(
                 priceProv.currentProvince,
               ),
-              province: priceProv.currentProvince,
             ),
           );
           Navigator.pop(context);

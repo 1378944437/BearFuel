@@ -1,5 +1,6 @@
 import '../../data/models/refuel_record_model.dart';
 import '../../data/services/apizero_fuel_price_service.dart';
+import 'ledger_audit_rules.dart';
 
 /// 本地规则引擎产出的发现（尚未落库）
 class RuleFinding {
@@ -44,7 +45,7 @@ class LedgerFindingType {
 /// 账本本地确定性规则审查引擎。
 ///
 /// 只做代码可以准确判断的硬校验；发现异常仅提示，不修改任何原始数据。
-/// 复杂解释与修正建议交由 AI（见 AiAuditService），用户确认后才允许修改。
+/// 规则开关与阈值参数来自规则库（见 AuditRuleSet），未提供时使用内置默认规则。
 class LedgerAuditService {
   LedgerAuditService._();
 
@@ -80,26 +81,55 @@ class LedgerAuditService {
     return hash.toRadixString(16).padLeft(8, '0');
   }
 
-  /// 对（按时间排序的）记录集合执行全部本地规则
+  /// 对（按时间排序的）记录集合按规则库执行本地规则。
+  /// [ruleSet] 为空时使用内置默认规则。
   static List<RuleFinding> runLocalRules({
     required List<RefuelRecordModel> records,
     required String Function(RefuelRecordModel record) dataHashOf,
     double? tankCapacity,
     ApiZeroFuelPriceSnapshot? priceSnapshot,
     DateTime? now,
+    AuditRuleSet? ruleSet,
   }) {
     final clock = now ?? DateTime.now();
+    final set = ruleSet ?? AuditRuleSet.builtinDefault();
+    AuditRuleConfig cfgOf(String type) =>
+        set.ruleOf(type) ?? AuditRuleConfig.defaultFor(type);
+
     final sorted = List<RefuelRecordModel>.from(records)
       ..sort((a, b) => a.refuelDate.compareTo(b.refuelDate));
 
     final findings = <RuleFinding>[
-      ..._checkDates(sorted, dataHashOf, clock),
-      ..._checkAmounts(sorted, dataHashOf),
-      ..._checkMileages(sorted, dataHashOf),
-      ..._checkDuplicates(sorted, dataHashOf),
-      ..._checkTankOverflow(sorted, dataHashOf, tankCapacity),
-      ..._checkPriceAgainstApi(sorted, dataHashOf, priceSnapshot),
-      ..._checkConsumptionAnomaly(sorted, dataHashOf),
+      ..._checkDates(
+        sorted,
+        dataHashOf,
+        clock,
+        cfgOf(AuditRuleType.futureDate),
+      ),
+      ..._checkAmounts(sorted, dataHashOf, cfgOf(AuditRuleType.amountMismatch)),
+      ..._checkMileages(sorted, dataHashOf, cfgOf(AuditRuleType.mileageJump)),
+      ..._checkDuplicates(
+        sorted,
+        dataHashOf,
+        cfgOf(AuditRuleType.duplicateRecord),
+      ),
+      ..._checkTankOverflow(
+        sorted,
+        dataHashOf,
+        tankCapacity,
+        cfgOf(AuditRuleType.tankOverflow),
+      ),
+      ..._checkPriceAgainstApi(
+        sorted,
+        dataHashOf,
+        priceSnapshot,
+        cfgOf(AuditRuleType.unitPriceDifference),
+      ),
+      ..._checkConsumptionAnomaly(
+        sorted,
+        dataHashOf,
+        cfgOf(AuditRuleType.consumptionAnomaly),
+      ),
     ];
     return findings;
   }
@@ -111,11 +141,15 @@ class LedgerAuditService {
     List<RefuelRecordModel> sorted,
     String Function(RefuelRecordModel record) dataHashOf,
     DateTime now,
+    AuditRuleConfig cfg,
   ) {
+    if (!cfg.enabled) return const [];
     final findings = <RuleFinding>[];
     for (final r in sorted) {
-      // 允许补录到明天（与账本页"允许明天"的口径一致）
-      if (r.refuelDate.isAfter(now.add(const Duration(days: 2)))) {
+      // 允许补录到明天（与账本页"允许明天"的口径一致），天数可按规则调整
+      if (r.refuelDate.isAfter(
+        now.add(Duration(days: cfg.param('allowedDays').round())),
+      )) {
         findings.add(
           RuleFinding(
             recordId: r.id,
@@ -139,13 +173,15 @@ class LedgerAuditService {
   static List<RuleFinding> _checkAmounts(
     List<RefuelRecordModel> sorted,
     String Function(RefuelRecordModel record) dataHashOf,
+    AuditRuleConfig cfg,
   ) {
+    if (!cfg.enabled) return const [];
     final findings = <RuleFinding>[];
     for (final r in sorted) {
       if (r.fuelAmount <= 0 || r.unitPrice <= 0 || r.totalPrice <= 0) continue;
       final expected = r.fuelAmount * r.unitPrice;
       final diff = (r.totalPrice - expected).abs();
-      if (diff > amountTolerance) {
+      if (diff > cfg.param('tolerance')) {
         findings.add(
           RuleFinding(
             recordId: r.id,
@@ -184,7 +220,10 @@ class LedgerAuditService {
   static List<RuleFinding> _checkMileages(
     List<RefuelRecordModel> sorted,
     String Function(RefuelRecordModel record) dataHashOf,
+    AuditRuleConfig cfg,
   ) {
+    if (!cfg.enabled) return const [];
+    final jumpThreshold = cfg.param('threshold');
     final findings = <RuleFinding>[];
     for (var i = 1; i < sorted.length; i++) {
       final prev = sorted[i - 1];
@@ -229,7 +268,7 @@ class LedgerAuditService {
             dataHash: dataHashOf(curr),
           ),
         );
-      } else if (delta > mileageJumpThreshold) {
+      } else if (delta > jumpThreshold) {
         findings.add(
           RuleFinding(
             recordId: curr.id,
@@ -253,7 +292,9 @@ class LedgerAuditService {
   static List<RuleFinding> _checkDuplicates(
     List<RefuelRecordModel> sorted,
     String Function(RefuelRecordModel record) dataHashOf,
+    AuditRuleConfig cfg,
   ) {
+    if (!cfg.enabled) return const [];
     final findings = <RuleFinding>[];
     for (var i = 1; i < sorted.length; i++) {
       final prev = sorted[i - 1];
@@ -292,11 +333,13 @@ class LedgerAuditService {
     List<RefuelRecordModel> sorted,
     String Function(RefuelRecordModel record) dataHashOf,
     double? tankCapacity,
+    AuditRuleConfig cfg,
   ) {
+    if (!cfg.enabled) return const [];
     if (tankCapacity == null || tankCapacity <= 0) return const [];
     final findings = <RuleFinding>[];
     for (final r in sorted) {
-      if (r.fuelAmount > tankCapacity * tankOverflowFactor) {
+      if (r.fuelAmount > tankCapacity * cfg.param('factor')) {
         findings.add(
           RuleFinding(
             recordId: r.id,
@@ -323,10 +366,13 @@ class LedgerAuditService {
     List<RefuelRecordModel> sorted,
     String Function(RefuelRecordModel record) dataHashOf,
     ApiZeroFuelPriceSnapshot? priceSnapshot,
+    AuditRuleConfig cfg,
   ) {
+    if (!cfg.enabled) return const [];
     if (priceSnapshot == null || !priceSnapshot.price.isAvailable) {
       return const [];
     }
+    final differenceThreshold = cfg.param('threshold');
     final findings = <RuleFinding>[];
     // 接口价格的"生效日期"：调价仅在该日期之后加油的账单才适用。
     // 之前的账单执行的是上一轮价格（本应用未保存历史价），不比对以免误报。
@@ -348,7 +394,7 @@ class LedgerAuditService {
       // 生效期语义：账单日期早于价格生效日期 → 跳过（属上一轮调价周期）
       if (recordDate.isBefore(effectiveDate)) continue;
       final diff = (r.unitPrice - reference).abs();
-      if (diff <= unitPriceDifferenceThreshold) continue;
+      if (diff <= differenceThreshold) continue;
       findings.add(
         RuleFinding(
           recordId: r.id,
@@ -383,7 +429,9 @@ class LedgerAuditService {
   static List<RuleFinding> _checkConsumptionAnomaly(
     List<RefuelRecordModel> sorted,
     String Function(RefuelRecordModel record) dataHashOf,
+    AuditRuleConfig cfg,
   ) {
+    if (!cfg.enabled) return const [];
     final valid = sorted
         .where(
           (r) =>
@@ -404,7 +452,7 @@ class LedgerAuditService {
     final findings = <RuleFinding>[];
     for (final r in valid) {
       final cons = r.fuelConsumption!;
-      if (cons > median * consumptionHighFactor) {
+      if (cons > median * cfg.param('highFactor')) {
         findings.add(
           RuleFinding(
             recordId: r.id,
@@ -425,7 +473,7 @@ class LedgerAuditService {
             dataHash: dataHashOf(r),
           ),
         );
-      } else if (cons < median * consumptionLowFactor) {
+      } else if (cons < median * cfg.param('lowFactor')) {
         findings.add(
           RuleFinding(
             recordId: r.id,

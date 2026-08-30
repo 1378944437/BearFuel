@@ -1,14 +1,13 @@
 import 'package:bearfuel/core/theme/app_icons.dart';
 import 'package:flutter/material.dart';
 
-import '../../../data/services/ai_audit_config_store.dart';
 import '../../../data/services/amap_location_service.dart';
 import '../../../data/services/fuel_price_api_config.dart';
 import '../../../data/services/weather_api_config.dart';
 import '../../widgets/custom_card.dart';
 import '../audit/audit_review_screen.dart';
 import 'about_section.dart';
-import 'ai_audit_settings_screen.dart';
+import 'audit_rules_screen.dart';
 import 'amap_key_settings_screen.dart';
 import 'data_import_export_screen.dart';
 import 'fuel_price_api_settings_screen.dart';
@@ -53,36 +52,32 @@ class _ServiceSettingsScreenState extends State<ServiceSettingsScreen> {
             title: '服务',
           ),
           _ServiceTile(
-            icon: AppIcons.auto_awesome_outlined,
-            color: const Color(0xFF6558D3),
-            title: 'AI 账本审查设置',
-            subtitle: AiAuditConfigStore.isConfigured
-                ? 'AI 服务已配置，可解释异常并给出修正建议'
-                : '本地规则审查始终可用，配置 AI 后获得解释与建议',
-            configured: AiAuditConfigStore.isConfigured,
-            optional: true,
-            statusLabel: AiAuditConfigStore.isConfigured ? '已配置' : '可选',
-            onTap: () async {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const AiAuditSettingsScreen(),
-                ),
-              );
-              if (context.mounted) setState(() {});
-            },
-          ),
-          _ServiceTile(
             icon: AppIcons.assessment_outlined,
             color: const Color(0xFF00838F),
-            title: '账本异常审查',
-            subtitle: '检查金额、里程、重复与油价差异，支持 AI 解释与确认修正',
+            title: '账本审查',
+            subtitle: '按规则库检查金额、里程、重复与油价差异，确认后修正',
             configured: true,
             statusLabel: '入口',
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const AuditReviewScreen()),
             ),
+          ),
+          _ServiceTile(
+            icon: AppIcons.auto_awesome_outlined,
+            color: const Color(0xFF6558D3),
+            title: '审查规则库',
+            subtitle: '内置默认规则可编辑与恢复默认，支持多套规则切换',
+            configured: true,
+            optional: true,
+            statusLabel: '可选',
+            onTap: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AuditRuleSetsScreen()),
+              );
+              if (context.mounted) setState(() {});
+            },
           ),
           _ServiceTile(
             icon: AppIcons.map_outlined,

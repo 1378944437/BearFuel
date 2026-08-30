@@ -6,8 +6,8 @@ import 'package:provider/provider.dart';
 import '../../../data/models/audit_finding_model.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../../data/models/refuel_record_model.dart';
-import '../../../data/services/ai_audit_config_store.dart';
 import '../../../providers/audit_provider.dart';
+import '../settings/audit_rules_screen.dart';
 import '../../../providers/fuel_price_provider.dart';
 import '../../../providers/refuel_provider.dart';
 import '../../../providers/vehicle_provider.dart';
@@ -42,7 +42,22 @@ class _AuditReviewScreenState extends State<AuditReviewScreen> {
     final findings = _applyFilter(audit.findings);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('账本审查')),
+      appBar: AppBar(
+        title: const Text('账本审查'),
+        actions: [
+          IconButton(
+            icon: const Icon(AppIcons.settings_outlined),
+            tooltip: '审查规则库',
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AuditRuleSetsScreen()),
+              );
+              if (context.mounted) setState(() {});
+            },
+          ),
+        ],
+      ),
       body: Column(
         children: [
           _buildToolbar(audit),
@@ -65,7 +80,7 @@ class _AuditReviewScreenState extends State<AuditReviewScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            audit.statusText,
+            '${audit.statusText} · 当前规则：${audit.activeRuleSet.name}',
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
@@ -87,17 +102,6 @@ class _AuditReviewScreenState extends State<AuditReviewScreen> {
                   icon: AppIcons.calendar_month,
                   enabled: !audit.isRunning,
                   onTap: () => _runRules(last30DaysOnly: true),
-                ),
-                const SizedBox(width: 6),
-                _actionChip(
-                  label: audit.isAiRunning
-                      ? 'AI 分析中…'
-                      : AiAuditConfigStore.models.length > 1
-                      ? 'AI 解释（${AiAuditConfigStore.models.length} 个模型）'
-                      : 'AI 解释待确认',
-                  icon: AppIcons.auto_awesome_outlined,
-                  enabled: !audit.isAiRunning && audit.isAiConfigured,
-                  onTap: () => _runAiExplanations(),
                 ),
               ],
             ),
@@ -203,9 +207,7 @@ class _AuditReviewScreenState extends State<AuditReviewScreen> {
         children: [
           EmptyStateView(
             title: _filter == 'handled' ? '暂无已处理记录' : '没有待确认的异常',
-            subtitle: audit.isAiConfigured
-                ? '执行本地规则审查后，可请求 AI 解释异常原因并给出建议'
-                : '本地规则审查可随时执行；配置 AI 后可获得异常原因解释与修正建议',
+            subtitle: '按激活规则库对账本执行本地规则检查，发现异常可确认、忽略或采纳修正建议',
             buttonText: audit.findings.isEmpty ? '审查全部账本' : null,
             onButtonPressed: audit.findings.isEmpty
                 ? () => _runRules(last30DaysOnly: false)
@@ -278,14 +280,6 @@ class _AuditReviewScreenState extends State<AuditReviewScreen> {
                     ),
                   ),
                 const Spacer(),
-                if (finding.confidence != null)
-                  Text(
-                    '置信度: ${finding.confidence}',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: colors.onSurfaceVariant,
-                    ),
-                  ),
               ],
             ),
             const SizedBox(height: 6),
@@ -360,18 +354,6 @@ class _AuditReviewScreenState extends State<AuditReviewScreen> {
               Text(
                 '备注：${finding.userNote}',
                 style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
-              ),
-            ],
-            // AI 徽标
-            if (finding.explanation.contains('AI') ||
-                finding.runId.contains('ai')) ...[
-              const SizedBox(height: 6),
-              Text(
-                'AI 结果仅用于辅助审查，不代表事实确认',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: colors.onSurfaceVariant.withValues(alpha: 0.8),
-                ),
               ),
             ],
             const SizedBox(height: 8),
@@ -512,7 +494,7 @@ class _AuditReviewScreenState extends State<AuditReviewScreen> {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
       child: Text(
-        'AI 结果仅用于辅助审查，不代表事实确认；原始账单不会被自动修改。',
+        '审查结果仅提示异常，原始账单不会被自动修改。',
         textAlign: TextAlign.center,
         style: TextStyle(fontSize: 10, color: colors.onSurfaceVariant),
       ),
@@ -552,7 +534,6 @@ class _AuditReviewScreenState extends State<AuditReviewScreen> {
       'unit_price_difference': '价格差异',
       'consumption_anomaly': '油耗偏离',
       'future_date': '日期异常',
-      'ai_review': 'AI 审查',
     };
     return labels[type] ?? type;
   }
@@ -575,96 +556,9 @@ class _AuditReviewScreenState extends State<AuditReviewScreen> {
 
     await audit.runLocalRulesAudit(
       records: records,
-      recordById: (id) => _recordById(id, records),
       tankCapacity: vehicle.tankCapacity,
       priceSnapshot: snapshot,
-      province: province,
       last30DaysOnly: last30DaysOnly,
-    );
-  }
-
-  Future<void> _runAiExplanations() async {
-    if (!AiAuditConfigStore.isConfigured) {
-      _showMessage('请先在"设置 > AI 账本审查设置"中配置服务');
-      return;
-    }
-    // 使用时从已保存的多个模型中选一个
-    String? model;
-    final savedModels = AiAuditConfigStore.models;
-    if (savedModels.isEmpty) {
-      _showMessage('尚未添加模型，请先在设置中添加');
-      return;
-    }
-    if (savedModels.length == 1) {
-      model = savedModels.first;
-    } else {
-      model = await _pickModelDialog(savedModels, AiAuditConfigStore.model);
-      if (model == null || model.isEmpty) return;
-    }
-    if (!mounted) return;
-    HapticFeedback.lightImpact();
-    final audit = context.read<AuditProvider>();
-    final refuelProv = context.read<RefuelProvider>();
-    final vehicleProv = context.read<VehicleProvider>();
-    final fuelProv = context.read<FuelPriceProvider>();
-    final vehicle = vehicleProv.currentVehicle;
-    final province = fuelProv.currentProvince;
-    final records = refuelProv.records;
-
-    await audit.runAiExplanations(
-      model: model,
-      contextBuilder: (finding) => audit.buildFindingContext(
-        finding: finding,
-        record: _recordById(finding.recordId ?? '', records),
-        tankCapacity: vehicle?.tankCapacity,
-        province: province,
-        priceSnapshot: fuelProv.priceSnapshotFor(province),
-      ),
-    );
-  }
-
-  /// 从已保存模型中选择一个（默认勾选当前激活模型）
-  Future<String?> _pickModelDialog(List<String> models, String active) {
-    return showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('选择本次使用的模型'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final model in models)
-              ListTile(
-                dense: true,
-                leading: Icon(
-                  model == active
-                      ? AppIcons.check_circle
-                      : AppIcons.circle_outlined,
-                  size: 18,
-                  color: model == active
-                      ? const Color(0xFFFF5A24)
-                      : Theme.of(ctx).colorScheme.onSurfaceVariant,
-                ),
-                title: Text(
-                  model,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: model == active
-                        ? FontWeight.bold
-                        : FontWeight.normal,
-                  ),
-                ),
-                onTap: () => Navigator.pop(ctx, model),
-              ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-        ],
-      ),
     );
   }
 

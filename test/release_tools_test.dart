@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:bearfuel/core/utils/release_tools.dart';
-import 'package:bearfuel/data/services/ai_audit_service.dart';
 
 void main() {
   group('版本号比较 (compareVersions)', () {
@@ -177,44 +176,6 @@ void main() {
       );
       expect(notFound.errorMessage, contains('暂无可访问的公开 Release'));
       expect(serverError.errorMessage, contains('暂时不可用'));
-    });
-  });
-
-  group('油价 AI 响应解析', () {
-    test('简化 JSON 使用 analysis 字段', () {
-      final result = AiAuditService.parsePriceReviewResponse(
-        '{"status":"warning","title":"存在差异","analysis":"接口金额缺失，无法核实。","confidence":"medium"}',
-      );
-      expect(result.title, equals('存在差异'));
-      expect(result.explanation, contains('无法核实'));
-      expect(result.status, equals('warning'));
-    });
-
-    test('代码围栏 JSON 可解析', () {
-      final result = AiAuditService.parsePriceReviewResponse(
-        '```json\n{"status":"insufficient_evidence","message":"官方未公布金额"}\n```',
-      );
-      expect(result.status, equals('insufficient_evidence'));
-      expect(result.explanation, equals('官方未公布金额'));
-    });
-
-    test('普通文本降级为证据不足结果而不是无效', () {
-      final result = AiAuditService.parsePriceReviewResponse(
-        '当前接口没有返回 2026-08-28 的官方调价金额，无法可靠补全。',
-      );
-      expect(result.status, equals('insufficient_evidence'));
-      expect(result.explanation, contains('无法可靠补全'));
-      expect(result.confidence, equals('low'));
-      expect(result.suggestedChanges, isEmpty);
-    });
-
-    test('缺少可选字段仍可展示有效结论', () {
-      final result = AiAuditService.parsePriceReviewResponse(
-        '{"explanation":"当前油价字段与调价日历基本一致。"}',
-      );
-      expect(result.explanation, contains('基本一致'));
-      expect(result.type, equals('price_review'));
-      expect(result.suggestion, isNull);
     });
   });
 }
