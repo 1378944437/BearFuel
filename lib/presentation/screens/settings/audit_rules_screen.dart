@@ -121,12 +121,15 @@ class _AuditRuleSetsScreenState extends State<AuditRuleSetsScreen> {
           for (final set in sets)
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
-              child: CustomCard(
-                margin: EdgeInsets.zero,
-                padding: EdgeInsets.zero,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: () => _openEditor(set.id),
+              // 参照账本左滑操作：左滑调出"编辑 / 删除"操作；
+              // 内置默认规则仅可编辑，不显示删除
+              child: _RuleSwipeCard(
+                canDelete: !set.isBuiltin,
+                onEdit: () => _openEditor(set.id),
+                onDelete: () => _swipeDelete(set),
+                child: CustomCard(
+                  margin: EdgeInsets.zero,
+                  padding: EdgeInsets.zero,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 14,
@@ -196,7 +199,7 @@ class _AuditRuleSetsScreenState extends State<AuditRuleSetsScreen> {
                               const SizedBox(height: 3),
                               Text(
                                 '${set.rules.where((r) => r.enabled).length}/${set.rules.length} 条规则启用'
-                                ' · 点按圆点设为使用中',
+                                ' · 点按圆点设为使用中，左滑可编辑 / 删除（内置仅编辑）',
                                 style: TextStyle(
                                   fontSize: 11,
                                   color: colors.onSurfaceVariant,
@@ -217,6 +220,42 @@ class _AuditRuleSetsScreenState extends State<AuditRuleSetsScreen> {
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  /// 左滑删除：确认后删除并回落到默认规则
+  Future<void> _swipeDelete(AuditRuleSet set) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('删除规则套件'),
+        content: Text('将删除「${set.name}」，删除后审查回落到默认规则。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await AuditRuleSetStore.deleteSet(set.id);
+    if (!mounted) return;
+    _reload();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('已删除「${set.name}」'),
+        backgroundColor: Colors.orange,
       ),
     );
   }
@@ -527,6 +566,151 @@ class _AuditRuleSetEditScreenState extends State<AuditRuleSetEditScreen> {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// 账本同款左滑卡片：左滑调出"编辑 / 删除"操作抽屉，点按收起或进入编辑。
+class _RuleSwipeCard extends StatefulWidget {
+  final bool canDelete;
+  final VoidCallback onEdit;
+  final Future<void> Function() onDelete;
+  final Widget child;
+
+  const _RuleSwipeCard({
+    required this.canDelete,
+    required this.onEdit,
+    required this.onDelete,
+    required this.child,
+  });
+
+  @override
+  State<_RuleSwipeCard> createState() => _RuleSwipeCardState();
+}
+
+class _RuleSwipeCardState extends State<_RuleSwipeCard> {
+  static const double _actionWidth = 72;
+  static const Duration _settleDuration = Duration(milliseconds: 150);
+
+  double _offset = 0;
+  bool _dragging = false;
+
+  double get _maxExtent =>
+      widget.canDelete ? _actionWidth * 2 + 4 : _actionWidth;
+
+  void _settleTo(double target) {
+    setState(() {
+      _dragging = false;
+      _offset = target;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Stack(
+        children: [
+          // 底层右侧操作抽屉（编辑 / 删除）
+          Positioned.fill(
+            child: Container(
+              color: colors.surfaceContainerHighest.withValues(alpha: 0.5),
+              alignment: Alignment.centerRight,
+              padding: const EdgeInsets.only(right: 4),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _actionButton(
+                    icon: AppIcons.edit_outlined,
+                    label: '编辑',
+                    color: const Color(0xFF1E88E5),
+                    onTap: () => _settleTo(0),
+                  ),
+                  if (widget.canDelete) ...[
+                    const SizedBox(width: 4),
+                    _actionButton(
+                      icon: AppIcons.delete_outline,
+                      label: '删除',
+                      color: Colors.red,
+                      onTap: () {
+                        _settleTo(0);
+                        widget.onDelete();
+                      },
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          // 上层卡片内容：跟随水平拖拽平移
+          AnimatedContainer(
+            duration: _dragging ? Duration.zero : _settleDuration,
+            curve: Curves.easeOut,
+            transform: Matrix4.translationValues(_offset, 0, 0),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                if (_offset != 0) {
+                  _settleTo(0);
+                } else {
+                  widget.onEdit();
+                }
+              },
+              onHorizontalDragStart: (_) => setState(() => _dragging = true),
+              onHorizontalDragUpdate: (details) {
+                setState(() {
+                  _offset = (_offset - details.delta.dx).clamp(
+                    -_maxExtent,
+                    0.0,
+                  );
+                });
+              },
+              onHorizontalDragEnd: (_) =>
+                  _settleTo(_offset < -_maxExtent / 2 ? -_maxExtent : 0),
+              onHorizontalDragCancel: () =>
+                  _settleTo(_offset < -_maxExtent / 2 ? -_maxExtent : 0),
+              child: widget.child,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _actionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: onTap,
+      child: Container(
+        width: _actionWidth - 4,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 18, color: color),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
