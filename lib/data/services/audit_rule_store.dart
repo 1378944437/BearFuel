@@ -22,6 +22,8 @@ class AuditRuleSetStore {
     for (final s in _sets) {
       if (s.id == _activeId) return s;
     }
+    // 未加载或数据异常时兜底为内置默认，避免界面崩溃
+    if (_sets.isEmpty) return AuditRuleSet.builtinDefault();
     return _sets.first;
   }
 

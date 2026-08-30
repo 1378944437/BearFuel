@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../../data/models/audit_finding_model.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../../data/models/refuel_record_model.dart';
+import '../../../data/services/audit_rule_store.dart';
 import '../../../providers/audit_provider.dart';
 import '../settings/audit_rules_screen.dart';
 import '../../../providers/fuel_price_provider.dart';
@@ -29,6 +30,10 @@ class _AuditReviewScreenState extends State<AuditReviewScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<AuditProvider>().loadFindings();
+      // 规则库加载完成后刷新工具栏中的规则名称
+      AuditRuleSetStore.ensureLoaded().then((_) {
+        if (mounted) setState(() {});
+      });
     });
   }
 
