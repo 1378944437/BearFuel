@@ -35,8 +35,8 @@ class AiReviewResult {
 
 /// AI 账本审查服务。
 ///
-/// 支持多种兼容接口：OpenAI /chat/completions、Anthropic /v1/messages、
-/// Gemini :generateContent，按激活供应商的接口类型自动适配。
+/// 支持多种兼容接口：OpenAI /chat/completions、OpenAI /responses、
+/// Anthropic /v1/messages、Gemini :generateContent，按激活供应商的接口类型自动适配。
 ///
 /// 安全边界：
 /// - 只发送异常记录的必要字段与规则结论，不发送完整账本、车牌、API Key。
@@ -77,20 +77,24 @@ severity 只能是 info / warning / critical。
   // 公共入口
   // ------------------------------------------------------------------
 
-  /// 测试连接：校验 URL 格式、Key、模型与响应可解析性
+  /// 测试连接：校验 URL 格式、Key、模型与响应可解析性。
+  /// [profile] 为空时测试当前激活供应商。
   static Future<(bool ok, String message)> testConnection({
     String? model,
+    AiProviderProfile? profile,
   }) async {
-    final profile = AiAuditConfigStore.activeProfile;
-    if (profile == null) return (false, '请先添加 AI 服务配置');
-    if (!profile.baseUrl.startsWith('http')) {
+    final effectiveProfile = profile ?? AiAuditConfigStore.activeProfile;
+    if (effectiveProfile == null) return (false, '请先添加 AI 服务配置');
+    if (!effectiveProfile.baseUrl.startsWith('http')) {
       return (false, 'Base URL 需以 http(s):// 开头');
     }
-    if (profile.apiKey.isEmpty) {
+    if (effectiveProfile.apiKey.isEmpty) {
       return (false, '请填写 API Key');
     }
     final effectiveModel =
-        ((model != null && model.isNotEmpty) ? model : profile.activeModel)
+        ((model != null && model.isNotEmpty)
+                ? model
+                : effectiveProfile.activeModel)
             .trim();
     if (effectiveModel.isEmpty) {
       return (false, '请先添加模型名称');
@@ -102,6 +106,7 @@ severity 只能是 info / warning / critical。
         ],
         maxTokens: 16,
         model: effectiveModel,
+        profile: effectiveProfile,
       );
       if (content.trim().isEmpty) {
         return (false, '连接成功但模型返回内容为空，请确认模型可用');
@@ -286,19 +291,20 @@ severity 只能是 info / warning / critical。
     );
   }
 
-  /// 拉取激活供应商的可用模型列表（按接口类型适配）
-  static Future<List<String>> fetchModels() async {
-    final profile = AiAuditConfigStore.activeProfile;
-    if (profile == null) {
+  /// 拉取指定供应商的可用模型列表（按接口类型适配）。
+  /// [profile] 为空时使用当前激活供应商。
+  static Future<List<String>> fetchModels({AiProviderProfile? profile}) async {
+    final effectiveProfile = profile ?? AiAuditConfigStore.activeProfile;
+    if (effectiveProfile == null) {
       throw const AiServiceException('请先添加 AI 服务配置');
     }
-    if (profile.baseUrl.isEmpty) {
+    if (effectiveProfile.baseUrl.isEmpty) {
       throw const AiServiceException('请先填写 Base URL');
     }
-    if (profile.apiKey.isEmpty) {
+    if (effectiveProfile.apiKey.isEmpty) {
       throw const AiServiceException('请先填写 API Key');
     }
-    return _fetchModelsFor(profile);
+    return _fetchModelsFor(effectiveProfile);
   }
 
   // ------------------------------------------------------------------
@@ -308,35 +314,45 @@ severity 只能是 info / warning / critical。
     List<Map<String, String>> messages, {
     required int maxTokens,
     String? model,
+    AiProviderProfile? profile,
   }) async {
-    final profile = AiAuditConfigStore.activeProfile;
-    if (profile == null) {
+    final effectiveProfile = profile ?? AiAuditConfigStore.activeProfile;
+    if (effectiveProfile == null) {
       throw const AiServiceException('请先添加 AI 服务配置');
     }
     final effectiveModel =
-        ((model != null && model.isNotEmpty) ? model : profile.activeModel)
+        ((model != null && model.isNotEmpty)
+                ? model
+                : effectiveProfile.activeModel)
             .trim();
     if (effectiveModel.isEmpty) {
       throw const AiServiceException('请先添加模型名称');
     }
-    switch (profile.interfaceType) {
+    switch (effectiveProfile.interfaceType) {
+      case AiInterfaceType.openaiResponses:
+        return _chatOpenaiResponses(
+          effectiveProfile,
+          messages,
+          model: effectiveModel,
+          maxTokens: maxTokens,
+        );
       case AiInterfaceType.anthropic:
         return _chatAnthropic(
-          profile,
+          effectiveProfile,
           messages,
           model: effectiveModel,
           maxTokens: maxTokens,
         );
       case AiInterfaceType.gemini:
         return _chatGemini(
-          profile,
+          effectiveProfile,
           messages,
           model: effectiveModel,
           maxTokens: maxTokens,
         );
       default:
         return _chatOpenai(
-          profile,
+          effectiveProfile,
           messages,
           model: effectiveModel,
           maxTokens: maxTokens,
@@ -351,6 +367,7 @@ severity 只能是 info / warning / critical。
       case AiInterfaceType.gemini:
         return _fetchModelsGemini(profile);
       default:
+        // OpenAI 兼容与 Responses API 共用 /models 模型列表端点。
         return _fetchModelsOpenai(profile);
     }
   }
@@ -425,6 +442,68 @@ severity 只能是 info / warning / critical。
       throw const AiServiceException('模型返回内容为空');
     }
     return content;
+  }
+
+  // ------------------------------------------------------------------
+  // OpenAI Responses API 实现（/responses）
+  // ------------------------------------------------------------------
+  static Future<String> _chatOpenaiResponses(
+    AiProviderProfile profile,
+    List<Map<String, String>> messages, {
+    required String model,
+    required int maxTokens,
+  }) async {
+    final base = _trimBase(profile.baseUrl);
+    final systemText = messages
+        .where((m) => m['role'] == 'system')
+        .map((m) => m['content'])
+        .join('\n');
+    final input = messages
+        .where((m) => m['role'] != 'system')
+        .map((m) => {'role': m['role'], 'content': m['content']})
+        .toList();
+
+    final responseBody = await _postJson(
+      url: '$base/responses',
+      headers: {HttpHeaders.authorizationHeader: 'Bearer ${profile.apiKey}'},
+      body: {
+        'model': model,
+        if (systemText.isNotEmpty) 'instructions': systemText,
+        'input': input,
+        'max_output_tokens': maxTokens,
+        'stream': false,
+      },
+    );
+    return parseResponsesOutput(responseBody);
+  }
+
+  /// 解析 Responses API 输出：优先取顶层 output_text，
+  /// 否则遍历 output 数组中 message 的 output_text 片段。
+  static String parseResponsesOutput(String responseBody) {
+    final decoded = jsonDecode(responseBody);
+    if (decoded is! Map<String, dynamic>) {
+      throw const AiServiceException('响应不是有效的 JSON 对象');
+    }
+    final topLevelText = decoded['output_text'];
+    if (topLevelText is String && topLevelText.trim().isNotEmpty) {
+      return topLevelText;
+    }
+    final output = decoded['output'];
+    if (output is! List || output.isEmpty) {
+      throw const AiServiceException('响应缺少 output，请确认接口为 Responses API 格式');
+    }
+    final text = output
+        .whereType<Map>()
+        .map((item) => item['content'])
+        .whereType<List>()
+        .expand((parts) => parts.whereType<Map>())
+        .map((part) => part['text'])
+        .whereType<String>()
+        .join();
+    if (text.trim().isEmpty) {
+      throw const AiServiceException('模型返回内容为空');
+    }
+    return text;
   }
 
   // ------------------------------------------------------------------

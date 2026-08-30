@@ -5,13 +5,17 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// AI 接口兼容类型
 class AiInterfaceType {
   static const String openai = 'openai'; // OpenAI 兼容 /chat/completions
+  static const String openaiResponses =
+      'openai_responses'; // OpenAI /responses（Responses API）
   static const String anthropic = 'anthropic'; // Anthropic /v1/messages
   static const String gemini = 'gemini'; // Google Gemini :generateContent
 
-  static const List<String> all = [openai, anthropic, gemini];
+  static const List<String> all = [openai, openaiResponses, anthropic, gemini];
 
   static String label(String type) {
     switch (type) {
+      case openaiResponses:
+        return 'OpenAI Responses';
       case anthropic:
         return 'Anthropic 兼容';
       case gemini:
