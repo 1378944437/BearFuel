@@ -182,6 +182,18 @@ class ApiZeroFuelPriceService {
     }
   }
 
+  /// 最近一次接口油价缓存（不检查新鲜度）。
+  /// 备用源兜底时用于补齐网页数据缺失的 98 号油价。
+  static Future<ApiZeroFuelPriceSnapshot?> readCachedSnapshot(
+    String province,
+  ) async {
+    try {
+      return await _readCache(province);
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<ApiZeroFuelPriceSnapshot?> _fetch(
     String province, {
     String? apiKey,

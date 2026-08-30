@@ -4,6 +4,7 @@ import '../domain/fuel_price_service.dart';
 import '../core/utils/location_service.dart';
 import '../data/services/apizero_fuel_price_service.dart';
 import '../data/services/apizero_oil_forecast_service.dart';
+import '../data/services/xxyh_price_service.dart';
 
 /// 全局油价与常驻城市定位状态管理 Provider
 class FuelPriceProvider extends ChangeNotifier {
@@ -17,6 +18,7 @@ class FuelPriceProvider extends ChangeNotifier {
   bool _isRefreshingPrice = false;
   String _statusText = '已就绪';
   String _priceStatusText = '尚未读取在线油价';
+  String? _calibrationNote;
   final Map<String, ApiZeroFuelPriceSnapshot> _onlinePricesByProvince = {};
   ApiZeroOilForecastResponse? _oilForecastResponse;
   bool _isRefreshingForecast = false;
@@ -32,6 +34,9 @@ class FuelPriceProvider extends ChangeNotifier {
   bool get isRefreshingPrice => _isRefreshingPrice;
   String get statusText => _statusText;
   String get priceStatusText => _priceStatusText;
+
+  /// 小熊油耗校准/备用说明（最近一次油价读取时是否生效，null 表示无）
+  String? get calibrationNote => _calibrationNote;
   bool get isRefreshingForecast => _isRefreshingForecast;
   String get forecastStatusText => _forecastStatusText;
   List<ApiZeroAdjustmentScheduleItem> get adjustmentSchedule =>
@@ -272,14 +277,108 @@ class FuelPriceProvider extends ChangeNotifier {
     );
     if (requestId != _priceRequestId || _currentCity != cityName) return;
 
+    // 备用与校准源：小熊油耗 fprice 网页（静态 HTML，低频抓取，仅 92/95/0）。
+    // 接口数据与网站数据不一致时，以网站数据为准。
+    String? calibrationNote;
+    var effectiveSnapshot = apiSnapshot;
     if (apiSnapshot != null) {
-      _onlinePricesByProvince[_currentProvince] = apiSnapshot;
-      _priceStatusText = '已读取在线实时油价（自动 30 分钟内不重复请求）';
+      final xxyh = await XxyhFuelPriceService.getCachedOrFetch(
+        _currentProvince,
+        force: force,
+      );
+      if (requestId != _priceRequestId || _currentCity != cityName) return;
+      final calibrated = FuelPriceProvider.calibrateWithXxyh(
+        apiSnapshot,
+        xxyh,
+      );
+      if (calibrated != null) {
+        effectiveSnapshot = calibrated;
+        calibrationNote = '已按小熊油耗网页数据校准油价，以网站数据为准';
+      }
+    } else {
+      // 接口不可用时的备用兜底：92/95/0 取网页数据，98 沿用接口历史缓存
+      final xxyh = await XxyhFuelPriceService.getCachedOrFetch(
+        _currentProvince,
+        force: force,
+      );
+      if (requestId != _priceRequestId || _currentCity != cityName) return;
+      if (xxyh != null) {
+        final stale = await ApiZeroFuelPriceService.readCachedSnapshot(
+          _currentProvince,
+        );
+        final gas98 = stale?.price.gas98;
+        if (gas98 != null && gas98 > 0) {
+          effectiveSnapshot = ApiZeroFuelPriceSnapshot(
+            province: _currentProvince,
+            price: ProvinceFuelPrice(
+              province: _currentProvince,
+              gas92: xxyh.gas92,
+              gas95: xxyh.gas95,
+              gas98: gas98,
+              diesel0: xxyh.diesel0,
+              lastChangeAmount: 0,
+              lastChangeDate:
+                  xxyh.lastChangeDate ??
+                  stale!.price.lastChangeDate,
+            ),
+            fetchedAt: DateTime.now(),
+            sourceUrl: XxyhFuelPriceService.provinceEndpoint,
+          );
+          calibrationNote =
+              '接口油价不可用，已使用小熊油耗网页备用数据（98 号沿用最近接口缓存）';
+        }
+      }
+    }
+
+    if (effectiveSnapshot != null) {
+      _onlinePricesByProvince[_currentProvince] = effectiveSnapshot;
+      _priceStatusText =
+          '已读取在线实时油价（自动 30 分钟内不重复请求）'
+          '${calibrationNote == null ? "" : "；$calibrationNote"}';
     } else {
       final reason = ApiZeroFuelPriceService.lastErrorMessage;
       _priceStatusText = 'ApiZero 实时油价查询失败：${reason ?? '未知原因'}；当前未显示本地示例数据';
     }
+    _calibrationNote = calibrationNote;
     await refreshAdjustmentData(force: force);
     notifyListeners();
   }
+
+  /// 与小熊油耗网页数据比对 92/95/0，存在差异时以网站数据为准；
+  /// 网页无数据或完全一致时返回 null（表示无需校准）。
+  static ApiZeroFuelPriceSnapshot? calibrateWithXxyh(
+    ApiZeroFuelPriceSnapshot api,
+    XxyhPriceSnapshot? xxyh,
+  ) {
+    if (xxyh == null) return null;
+    bool differs(double a, double b) => (a - b).abs() > 0.005;
+    final grades = <String>[
+      if (differs(api.price.gas92, xxyh.gas92)) '92',
+      if (differs(api.price.gas95, xxyh.gas95)) '95',
+      if (differs(api.price.diesel0, xxyh.diesel0)) '0#',
+    ];
+    if (grades.isEmpty &&
+        (xxyh.lastChangeDate == null ||
+            _dateEquals(api.price.lastChangeDate, xxyh.lastChangeDate!))) {
+      return null;
+    }
+    return ApiZeroFuelPriceSnapshot(
+      province: api.province,
+      price: ProvinceFuelPrice(
+        province: api.price.province,
+        // 以网站数据为准（网站无 98#，该标号保留接口值）
+        gas92: xxyh.gas92,
+        gas95: xxyh.gas95,
+        gas98: api.price.gas98,
+        diesel0: xxyh.diesel0,
+        lastChangeAmount: api.price.lastChangeAmount,
+        lastChangeDate: xxyh.lastChangeDate ?? api.price.lastChangeDate,
+      ),
+      fetchedAt: api.fetchedAt,
+      sourceUrl: api.sourceUrl,
+    );
+  }
+
+  static bool _dateEquals(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
 }
