@@ -2,7 +2,7 @@ name: bearfuel
 description: "类小熊油耗的专业级车辆油耗与用车成本管理应用"
 publish_to: 'none' # 私有应用，不发布到 pub.dev
 
-version: 0.2.36+47
+version: 0.2.37+48
 
 environment:
   sdk: '>=3.12.0 <4.0.0'
