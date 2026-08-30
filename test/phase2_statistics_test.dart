@@ -69,42 +69,7 @@ void main() {
       ),
     ];
 
-    test('1. 异常点智能诊断只使用足够的实测数据测试', () {
-      expect(StatisticsService.getAnomalyDiagnostics(sampleRecords), isEmpty);
-
-      final diagnostics = StatisticsService.getAnomalyDiagnostics([
-        ...sampleRecords,
-        RefuelRecordModel(
-          id: 'r5',
-          vehicleId: 'v1',
-          refuelDate: DateTime(2026, 11, 10),
-          mileage: 12400,
-          fuelAmount: 42.0,
-          unitPrice: 7.4,
-          totalPrice: 310.8,
-          gasStation: '中石化阳光站',
-          fuelType: '92#',
-          isFullTank: true,
-          distance: 600.0,
-          fuelConsumption: 8.80,
-          costPerKm: 0.52,
-        ),
-      ]);
-      expect(diagnostics.isNotEmpty, true);
-
-      final highItems = diagnostics.where((d) => d.isHigh).toList();
-      final lowItems = diagnostics.where((d) => !d.isHigh).toList();
-
-      expect(highItems.isNotEmpty, true);
-      expect(highItems.first.consumption, 9.60);
-      expect(highItems.first.reason.contains('个人基线'), true);
-
-      expect(lowItems.isNotEmpty, true);
-      expect(lowItems.first.consumption, 5.00);
-      expect(lowItems.first.reason.contains('个人基线'), true);
-    });
-
-    test('2. 365天热力日历数据构造测试 (get365DayActivityHeatmap)', () {
+    test('1. 365天热力日历数据构造测试 (get365DayActivityHeatmap)', () {
       final summary = StatisticsService.get365DayActivityHeatmap(
         sampleRecords,
         [],
@@ -120,14 +85,14 @@ void main() {
       expect(summary.activeRate, greaterThan(0.0));
     });
 
-    test('3. 每公里花费走势图测试 (getCostPerKmTrend)', () {
+    test('2. 每公里花费走势图测试 (getCostPerKmTrend)', () {
       final trend = StatisticsService.getCostPerKmTrend(sampleRecords);
       expect(trend.length, 4);
       expect(trend.first.value, 0.50);
       expect(trend[1].value, 0.73);
     });
 
-    test('4. 气温与能耗只使用真实天气快照测试', () {
+    test('3. 气温与能耗只使用真实天气快照测试', () {
       final snapshots = [
         WeatherSnapshotModel(
           cityKey: '1007',

@@ -1,35 +1,7 @@
-import 'dart:math' as math;
 import '../data/models/refuel_record_model.dart';
 import '../data/models/expense_record_model.dart';
 import '../data/models/weather_snapshot_model.dart';
 import '../../core/utils/date_formatter.dart';
-
-/// 异常点智能诊断模型
-class AnomalyDiagnosticItem {
-  final String recordId;
-  final DateTime date;
-  final double consumption;
-  final double baselineConsumption;
-  final double deviation;
-  final double deviationPercent;
-  final bool isHigh;
-  final String station;
-  final String reason;
-  final String suggestion;
-
-  AnomalyDiagnosticItem({
-    required this.recordId,
-    required this.date,
-    required this.consumption,
-    required this.baselineConsumption,
-    required this.deviation,
-    required this.deviationPercent,
-    required this.isHigh,
-    required this.station,
-    required this.reason,
-    required this.suggestion,
-  });
-}
 
 /// 365天行驶热力日历单日格子模型
 class DailyActivityCell {
@@ -74,6 +46,7 @@ class YearlyHeatmapSummary {
 }
 
 /// 图表点位数据模型
+
 class ChartDataPoint {
   final String label; // X轴标签 (如 08-01)
   final double value; // Y轴数值
@@ -643,89 +616,6 @@ class StatisticsService {
             '油耗: ${r.fuelConsumption?.toStringAsFixed(1) ?? "--"}L · ¥${r.unitPrice}/L',
       );
     }).toList();
-  }
-
-  /// 12. 异常点智能诊断（仅基于有效实测油耗记录）
-  static List<AnomalyDiagnosticItem> getAnomalyDiagnostics(
-    List<RefuelRecordModel> records,
-  ) {
-    final validRecords =
-        records
-            .where(
-              (r) =>
-                  r.fuelConsumption != null &&
-                  r.fuelConsumption! > 0 &&
-                  r.distance != null &&
-                  r.distance! > 0,
-            )
-            .toList()
-          ..sort((a, b) => b.refuelDate.compareTo(a.refuelDate));
-
-    if (validRecords.length < 5) return [];
-
-    final consumptions = validRecords.map((r) => r.fuelConsumption!).toList();
-    final mean = consumptions.reduce((a, b) => a + b) / consumptions.length;
-
-    // 计算标准差与离群阈值 (约 1.1 倍标准差敏感度)
-    final variance =
-        consumptions.fold(
-          0.0,
-          (sum, val) => sum + (val - mean) * (val - mean),
-        ) /
-        consumptions.length;
-    // 样本完全无波动时不存在有意义的离群阈值，直接返回空诊断
-    if (variance <= 0) {
-      return const [];
-    }
-    final stdDev = math.sqrt(variance);
-    final highThreshold = mean + (stdDev * 1.15).clamp(0.7, 2.5);
-    final lowThreshold = mean - (stdDev * 1.05).clamp(0.6, 2.2);
-
-    final List<AnomalyDiagnosticItem> diagnostics = [];
-
-    for (final r in validRecords) {
-      final cons = r.fuelConsumption!;
-      if (cons >= highThreshold) {
-        final diff = cons - mean;
-        final pct = (diff / mean) * 100.0;
-        diagnostics.add(
-          AnomalyDiagnosticItem(
-            recordId: r.id,
-            date: r.refuelDate,
-            consumption: double.parse(cons.toStringAsFixed(2)),
-            baselineConsumption: double.parse(mean.toStringAsFixed(2)),
-            deviation: double.parse(diff.toStringAsFixed(2)),
-            deviationPercent: double.parse(pct.toStringAsFixed(1)),
-            isHigh: true,
-            station: r.gasStation ?? '加油站',
-            reason:
-                '该次实测油耗高于 ${mean.toStringAsFixed(2)} L/100km 的个人基线，偏差 ${diff.toStringAsFixed(2)} L/100km。',
-            suggestion: '请结合本次记录的备注、行驶距离和路况核对；若连续出现，再检查胎压、空调和车辆状态。',
-          ),
-        );
-      } else if (cons <= lowThreshold && cons > 2.0) {
-        final diff = mean - cons;
-        final pct = (diff / mean) * 100.0;
-
-        diagnostics.add(
-          AnomalyDiagnosticItem(
-            recordId: r.id,
-            date: r.refuelDate,
-            consumption: double.parse(cons.toStringAsFixed(2)),
-            baselineConsumption: double.parse(mean.toStringAsFixed(2)),
-            deviation: double.parse((-diff).toStringAsFixed(2)),
-            deviationPercent: double.parse((-pct).toStringAsFixed(1)),
-            isHigh: false,
-            station: r.gasStation ?? '加油站',
-            reason:
-                '该次实测油耗低于 ${mean.toStringAsFixed(2)} L/100km 的个人基线，偏差 ${diff.toStringAsFixed(2)} L/100km。',
-            suggestion: '这只是当前记录中的低油耗样本，不推断外部气候或油站因素；可继续积累同类完整记录。',
-          ),
-        );
-      }
-    }
-
-    return diagnostics;
   }
 
   /// 14. 构造 365 天出车热力矩阵数据 (GitHub-style 52周 x 7天)
