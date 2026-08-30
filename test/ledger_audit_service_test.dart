@@ -196,6 +196,41 @@ void main() {
       expect(finding.evidence?['reference_value'], 7.79);
     });
 
+    test('生效期之前的账单不做价格对比（调价周期误报回归）', () {
+      // 账单日期（08-15）早于接口价格生效日期（08-20）：
+      // 该账单执行的是上一轮价格，不应与新一轮价格比较
+      final snapshot = ApiZeroFuelPriceSnapshot(
+        province: '湖北',
+        price: ProvinceFuelPrice(
+          province: '湖北',
+          gas92: 8.10,
+          gas95: 8.6,
+          gas98: 9.2,
+          diesel0: 7.8,
+          lastChangeAmount: 0.31,
+          lastChangeDate: DateTime(2026, 8, 20),
+        ),
+        fetchedAt: DateTime(2026, 8, 29),
+        sourceUrl: 'https://example.com',
+      );
+      final findings = run([
+        record(
+          id: 'old_price',
+          date: DateTime(2026, 8, 15),
+          mileage: 10000,
+          amount: 40,
+          price: 7.79, // 上一轮价格：与本轮 8.10 差 0.31，属正常
+          total: 311.6,
+        ),
+      ], priceSnapshot: snapshot);
+      expect(
+        findings.where(
+          (f) => f.findingType == LedgerFindingType.unitPriceDifference,
+        ),
+        isEmpty,
+      );
+    });
+
     test('油耗偏离个人中位数时提示（≥2 个有效样本）', () {
       final findings = run([
         record(

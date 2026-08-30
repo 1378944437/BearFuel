@@ -10,6 +10,8 @@ import '../../../providers/fuel_price_provider.dart';
 import '../../../providers/vehicle_provider.dart';
 import '../../../data/models/vehicle_model.dart';
 import '../../../data/services/apizero_oil_forecast_service.dart';
+import '../../../data/services/ai_audit_config_store.dart';
+import '../../../data/services/ai_audit_service.dart';
 import '../../widgets/custom_card.dart';
 import '../../widgets/city_picker_sheet.dart';
 import '../../widgets/app_page_title.dart';
@@ -24,6 +26,9 @@ class NationalFuelPriceScreen extends StatefulWidget {
 }
 
 class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
+  bool _isAiReviewingPrice = false;
+  AiReviewResult? _priceAiResult;
+
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
@@ -158,6 +163,12 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
 
           _buildPriceSourceNotice(fuelProv),
 
+          _buildAiPriceReviewCard(
+            fuelProv: fuelProv,
+            priceData: priceData,
+            schedule: history,
+          ),
+
           const SizedBox(height: 6),
 
           // 2. 四大标号油价大字展示卡片
@@ -194,6 +205,258 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
         ],
       ),
     );
+  }
+
+  /// AI 油价审查与缺失调价分析入口。
+  /// AI 只分析接口已返回的数据和缺失字段，不会把推测值写回油价或账本。
+  Widget _buildAiPriceReviewCard({
+    required FuelPriceProvider fuelProv,
+    required ProvinceFuelPrice priceData,
+    required List<ApiZeroAdjustmentScheduleItem> schedule,
+  }) {
+    final colors = Theme.of(context).colorScheme;
+    final configured = AiAuditConfigStore.isConfigured;
+    final missingCount = schedule
+        .where(
+          (item) =>
+              item.status == '已过' &&
+              item.gasolineYuanPerTon == null &&
+              item.summary == null,
+        )
+        .length;
+
+    return CustomCard(
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                AppIcons.auto_awesome_outlined,
+                size: 18,
+                color: Color(0xFF6558D3),
+              ),
+              const SizedBox(width: 7),
+              const Expanded(
+                child: Text(
+                  'AI 油价数据审查',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                ),
+              ),
+              if (missingCount > 0)
+                Text(
+                  '$missingCount 项待核对',
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: Colors.orange,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            configured
+                ? '检查当前油价与调价日历的一致性，或分析已过窗口仍缺少金额的原因。AI 不会补造官方价格。'
+                : '配置 AI 服务后，可审查接口结果并分析缺失调价字段；当前油价数据不受影响。',
+            style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: configured && !_isAiReviewingPrice
+                      ? () => _runPriceAiReview(
+                          fuelProv: fuelProv,
+                          priceData: priceData,
+                          schedule: schedule,
+                          completion: false,
+                        )
+                      : null,
+                  icon: const Icon(AppIcons.assessment_outlined, size: 15),
+                  label: const Text('审查当前油价'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed:
+                      configured && missingCount > 0 && !_isAiReviewingPrice
+                      ? () => _runPriceAiReview(
+                          fuelProv: fuelProv,
+                          priceData: priceData,
+                          schedule: schedule,
+                          completion: true,
+                        )
+                      : null,
+                  icon: const Icon(AppIcons.auto_awesome_outlined, size: 15),
+                  label: const Text('分析缺失调价'),
+                ),
+              ),
+            ],
+          ),
+          if (_isAiReviewingPrice) ...[
+            const SizedBox(height: 8),
+            const LinearProgressIndicator(minHeight: 2),
+          ],
+          if (_priceAiResult != null) ...[
+            const SizedBox(height: 8),
+            _buildInlinePriceAiResult(_priceAiResult!),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Future<void> _runPriceAiReview({
+    required FuelPriceProvider fuelProv,
+    required ProvinceFuelPrice priceData,
+    required List<ApiZeroAdjustmentScheduleItem> schedule,
+    required bool completion,
+  }) async {
+    final models = AiAuditConfigStore.models;
+    if (models.isEmpty) {
+      _showPriceAiMessage('请先在 AI 账本审查设置中添加模型', Colors.orange);
+      return;
+    }
+    final model = models.length == 1
+        ? models.first
+        : await _choosePriceAiModel(models, AiAuditConfigStore.model);
+    if (model == null || model.isEmpty || !mounted) return;
+
+    setState(() {
+      _isAiReviewingPrice = true;
+      _priceAiResult = null;
+    });
+
+    final currentPrice = fuelProv.currentPrice;
+    final contextData = <String, dynamic>{
+      'task': completion
+          ? 'review_missing_adjustment_result'
+          : 'review_current_fuel_price',
+      'province': fuelProv.currentProvince,
+      'price': {
+        'gas92': currentPrice.gas92,
+        'gas95': currentPrice.gas95,
+        'gas98': currentPrice.gas98,
+        'diesel0': currentPrice.diesel0,
+        'last_change_date': currentPrice.lastChangeDate
+            .toIso8601String()
+            .substring(0, 10),
+      },
+      'schedule': schedule
+          .take(8)
+          .map(
+            (item) => <String, dynamic>{
+              'date': item.date.toIso8601String().substring(0, 10),
+              'status': item.status,
+              'effective': item.effective,
+              'gasoline_yuan_per_ton': item.gasolineYuanPerTon,
+              'diesel_yuan_per_ton': item.dieselYuanPerTon,
+              'summary': item.summary,
+            },
+          )
+          .toList(),
+      'constraints': [
+        '接口数据是事实来源，缺失金额不得猜测或补造',
+        'AI 只能指出冲突、证据不足与核查建议',
+        '不要修改任何油价或账本数据',
+      ],
+    };
+
+    final result = await AiAuditService.reviewFinding(
+      context: contextData,
+      model: model,
+    );
+    if (!mounted) return;
+    setState(() {
+      _isAiReviewingPrice = false;
+      _priceAiResult = result;
+    });
+    if (result == null) {
+      _showPriceAiMessage('AI 未返回有效结果；接口油价与调价日历保持不变', Colors.orange);
+    }
+  }
+
+  Future<String?> _choosePriceAiModel(List<String> models, String active) {
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('选择本次使用的模型'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final model in models)
+              ListTile(
+                dense: true,
+                leading: Icon(
+                  model == active
+                      ? AppIcons.check_circle
+                      : AppIcons.circle_outlined,
+                  color: model == active
+                      ? const Color(0xFFFF5A24)
+                      : Theme.of(ctx).colorScheme.onSurfaceVariant,
+                ),
+                title: Text(model),
+                onTap: () => Navigator.pop(ctx, model),
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInlinePriceAiResult(AiReviewResult result) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            result.title,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            result.explanation,
+            style: const TextStyle(fontSize: 12, height: 1.4),
+          ),
+          if (result.suggestion != null && result.suggestion!.isNotEmpty) ...[
+            const SizedBox(height: 3),
+            Text(
+              '建议：${result.suggestion}',
+              style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
+            ),
+          ],
+          const SizedBox(height: 4),
+          Text(
+            'AI 结果仅供辅助审查；缺失官方金额不会用推测值替代。',
+            style: TextStyle(fontSize: 10, color: colors.onSurfaceVariant),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showPriceAiMessage(String message, Color color) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message), backgroundColor: color));
   }
 
   Widget _buildPriceSourceNotice(FuelPriceProvider fuelProv) {

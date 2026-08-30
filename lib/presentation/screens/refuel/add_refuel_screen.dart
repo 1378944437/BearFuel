@@ -551,7 +551,7 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
                     const Row(
                       children: [
                         Text(
-                          '机显数据 *',
+                          '机显数据',
                           style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.bold,
@@ -604,7 +604,7 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    // 机显单价 × 加油量 = 机显金额
+                    // 第一行：机显单价 × 加油量
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
@@ -635,11 +635,11 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
                           ),
                         ),
                         Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
                           child: Text(
                             '×',
                             style: TextStyle(
-                              fontSize: 15,
+                              fontSize: 16,
                               fontWeight: FontWeight.bold,
                               color: colors.onSurfaceVariant,
                             ),
@@ -671,40 +671,31 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
                             ),
                           ),
                         ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 6),
-                          child: Text(
-                            '=',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                              color: colors.onSurfaceVariant,
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          child: TextFormField(
-                            controller: _pumpAmountController,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            inputFormatters: [AppInputFormatters.decimal2],
-                            style: TextStyle(color: colors.onSurface),
-                            decoration: InputDecoration(
-                              labelText: '机显金额',
-                              hintText: '354.00',
-                              hintStyle: TextStyle(
-                                fontSize: 11,
-                                color: colors.onSurfaceVariant.withValues(
-                                  alpha: 0.75,
-                                ),
-                              ),
-                              suffixText: '元',
-                            ),
-                            onChanged: _onPumpAmountChanged,
-                          ),
-                        ),
                       ],
+                    ),
+                    const SizedBox(height: 12),
+                    // 第二行：机显金额（整行显示完整）
+                    TextFormField(
+                      controller: _pumpAmountController,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      inputFormatters: [AppInputFormatters.decimal2],
+                      style: TextStyle(color: colors.onSurface),
+                      decoration: InputDecoration(
+                        labelText: '机显金额（元）',
+                        hintText: '如 354.00',
+                        hintStyle: TextStyle(
+                          fontSize: 11,
+                          color: colors.onSurfaceVariant.withValues(
+                            alpha: 0.75,
+                          ),
+                        ),
+                        prefixIcon: const Icon(
+                          AppIcons.monetization_on_outlined,
+                        ),
+                      ),
+                      onChanged: _onPumpAmountChanged,
                     ),
                   ],
                 ),
@@ -814,7 +805,6 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
             // 5. 是否加满？（分段选择 + 说明）
             _SegmentedQuestionCard(
               label: '是否加满?',
-              isRequired: true,
               tooltip: '只有加满跳枪才能精确计算该区间真实油耗；未加满的油量会累计到下一次加满时平摊',
               options: const [true, false],
               optionLabels: const ['加满', '没加满'],
@@ -1015,25 +1005,10 @@ class _QuestionMarkTooltip extends StatelessWidget {
       message: message,
       triggerMode: TooltipTriggerMode.tap,
       showDuration: const Duration(seconds: 4),
-      child: Container(
-        width: 16,
-        height: 16,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-            width: 1,
-          ),
-        ),
-        child: Text(
-          '?',
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.bold,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
+      child: Icon(
+        AppIcons.info_outline,
+        size: 15,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
       ),
     );
   }

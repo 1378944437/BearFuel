@@ -54,9 +54,6 @@ class LedgerAuditService {
   /// 与接口价格差异超过该值（元/升）时提示待确认
   static const double unitPriceDifferenceThreshold = 0.30;
 
-  /// 油价对比窗口：加油日期与接口调价日期相差不超过该天数
-  static const int priceCompareWindowDays = 16;
-
   /// 相邻记录里程跳跃提示阈值（km）
   static const double mileageJumpThreshold = 2000;
 
@@ -331,7 +328,9 @@ class LedgerAuditService {
       return const [];
     }
     final findings = <RuleFinding>[];
-    final apiDate = priceSnapshot.price.lastChangeDate;
+    // 接口价格的"生效日期"：调价仅在该日期之后加油的账单才适用。
+    // 之前的账单执行的是上一轮价格（本应用未保存历史价），不比对以免误报。
+    final effectiveDate = _dateOnly(priceSnapshot.price.lastChangeDate);
 
     double? gradePrice(String fuelType) {
       if (fuelType.contains('98')) return priceSnapshot.price.gas98;
@@ -345,11 +344,11 @@ class LedgerAuditService {
     for (final r in sorted) {
       final reference = gradePrice(r.fuelType);
       if (reference == null || reference <= 0) continue;
+      final recordDate = _dateOnly(r.refuelDate);
+      // 生效期语义：账单日期早于价格生效日期 → 跳过（属上一轮调价周期）
+      if (recordDate.isBefore(effectiveDate)) continue;
       final diff = (r.unitPrice - reference).abs();
       if (diff <= unitPriceDifferenceThreshold) continue;
-      // 仅对与接口调价日期相邻（±窗口）的账单做对比，避免跨调价周期的误报
-      final dayGap = r.refuelDate.difference(apiDate).inDays.abs();
-      if (dayGap > priceCompareWindowDays) continue;
       findings.add(
         RuleFinding(
           recordId: r.id,
@@ -358,7 +357,7 @@ class LedgerAuditService {
           title: '单价与同期接口价格存在较大差异',
           explanation:
               '账单单价 ${r.unitPrice.toStringAsFixed(2)}元/升，'
-              '接口快照（${apiDate.month}/${apiDate.day}，${priceSnapshot.province}）为 '
+              '接口快照（${priceSnapshot.province}，自 ${effectiveDate.month}/${effectiveDate.day} 生效）为 '
               '${reference.toStringAsFixed(2)}元/升，相差 ${diff.toStringAsFixed(2)} 元/升。',
           suggestion: '可能是加油站优惠、会员折扣或录入错误，请结合小票确认；差异不自动修改账单。',
           evidence: {
@@ -366,7 +365,7 @@ class LedgerAuditService {
             'record_value': r.unitPrice,
             'reference_value': reference,
             'source': 'ApiZero',
-            'source_date': apiDate.toIso8601String().substring(0, 10),
+            'source_date': effectiveDate.toIso8601String().substring(0, 10),
             'province': priceSnapshot.province,
           },
           dataHash: dataHashOf(r),
@@ -375,6 +374,8 @@ class LedgerAuditService {
     }
     return findings;
   }
+
+  static DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
   // ------------------------------------------------------------------
   // 规则 5.3 油耗偏离个人中位数

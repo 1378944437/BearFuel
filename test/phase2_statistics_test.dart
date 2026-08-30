@@ -114,7 +114,8 @@ void main() {
       expect(summary.year, 2026);
       expect(summary.cells.length, 365);
       expect(summary.activeDays, greaterThanOrEqualTo(3));
-      expect(summary.totalYearMileage, 2400.0);
+      // 相邻差口径：首条记录无前序基准不计入，总计 = 500+700+600
+      expect(summary.totalYearMileage, 1800.0);
       expect(summary.maxDailyMileage, 700.0);
       expect(summary.activeRate, greaterThan(0.0));
     });

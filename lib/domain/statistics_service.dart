@@ -3,7 +3,6 @@ import '../data/models/refuel_record_model.dart';
 import '../data/models/expense_record_model.dart';
 import '../data/models/weather_snapshot_model.dart';
 import '../../core/utils/date_formatter.dart';
-import 'fuel_calculator.dart';
 
 /// 异常点智能诊断模型
 class AnomalyDiagnosticItem {
@@ -188,6 +187,27 @@ class _WeightedConsumption {
   int recordCount = 0;
 }
 
+/// 按时间排序后累加相邻记录的正里程差。
+///
+/// 这是"累计行驶里程"的唯一权威口径：
+/// - 未加满记录不再重复累计（其与下一条的里程差包含本段）；
+/// - 漏记记录与前一条之间的真实行驶里程不再丢失（油耗虽无法计算，里程已知）。
+double sumConsecutiveMileage(List<RefuelRecordModel> records) {
+  if (records.length < 2) return 0;
+  final sorted = List<RefuelRecordModel>.from(records)
+    ..sort((a, b) {
+      final c = a.refuelDate.compareTo(b.refuelDate);
+      if (c != 0) return c;
+      return a.mileage.compareTo(b.mileage);
+    });
+  var total = 0.0;
+  for (var i = 1; i < sorted.length; i++) {
+    final delta = sorted[i].mileage - sorted[i - 1].mileage;
+    if (delta > 0) total += delta;
+  }
+  return total;
+}
+
 /// 数据统计与报表聚合领域服务
 class StatisticsService {
   /// 1. 生成单次百公里油耗变动趋势点序列
@@ -324,9 +344,8 @@ class StatisticsService {
           ? (validFuel / validDistance) * 100.0
           : 0.0;
 
-      final dist = stageRecords
-          .where(FuelCalculator.isCompletedCycleRecord)
-          .fold(0.0, (sum, r) => sum + (r.distance ?? 0.0));
+      // 里程按相邻差累加（阶段内），漏记/未加满区间不丢里程
+      final dist = sumConsecutiveMileage(stageRecords);
       final fuel = stageRecords.fold(0.0, (sum, r) => sum + r.fuelAmount);
 
       double? diff;
@@ -471,9 +490,7 @@ class StatisticsService {
       final rList = groupedRefuel[k] ?? [];
       final eList = groupedExpense[k] ?? [];
 
-      final dist = rList
-          .where(FuelCalculator.isCompletedCycleRecord)
-          .fold(0.0, (sum, r) => sum + (r.distance ?? 0.0));
+      final dist = sumConsecutiveMileage(rList);
       final fuel = rList.fold(0.0, (sum, r) => sum + r.fuelAmount);
       final fuelCost = rList.fold(0.0, (sum, r) => sum + r.totalPrice);
       final otherCost = eList.fold(0.0, (sum, e) => sum + e.amount);
@@ -728,17 +745,21 @@ class StatisticsService {
     final Map<String, double> dayFuelMap = {};
     final Map<String, double> dayExpMap = {};
 
-    for (final r in records) {
-      if (r.refuelDate.year == targetYear) {
-        final key = DateFormatter.formatYmd(r.refuelDate);
-        dayDistMap[key] =
-            (dayDistMap[key] ?? 0.0) +
-            (FuelCalculator.isCompletedCycleRecord(r)
-                ? (r.distance ?? 0.0)
-                : 0.0);
-        dayFuelMap[key] = (dayFuelMap[key] ?? 0.0) + r.fuelAmount;
-        dayExpMap[key] = (dayExpMap[key] ?? 0.0) + r.totalPrice;
+    final yearRecords =
+        records.where((r) => r.refuelDate.year == targetYear).toList()
+          ..sort((a, b) => a.refuelDate.compareTo(b.refuelDate));
+    for (var i = 0; i < yearRecords.length; i++) {
+      final r = yearRecords[i];
+      final key = DateFormatter.formatYmd(r.refuelDate);
+      // 按相邻差计里程：首条（或跨日衔接）无法确定的行驶量不计入当日
+      var dayDist = 0.0;
+      if (i > 0) {
+        final delta = r.mileage - yearRecords[i - 1].mileage;
+        if (delta > 0) dayDist = delta;
       }
+      dayDistMap[key] = (dayDistMap[key] ?? 0.0) + dayDist;
+      dayFuelMap[key] = (dayFuelMap[key] ?? 0.0) + r.fuelAmount;
+      dayExpMap[key] = (dayExpMap[key] ?? 0.0) + r.totalPrice;
     }
 
     for (final e in expenses) {

@@ -168,10 +168,9 @@ class _StatisticsScreenState extends State<StatisticsScreen>
       0.0,
       (sum, r) => sum + r.totalPrice,
     );
-    // 只累计完成测量周期的里程，避免未加满记录与下一周期重复计算
-    final double rangeDistance = records
-        .where(FuelCalculator.isCompletedCycleRecord)
-        .fold(0.0, (sum, r) => sum + (r.distance ?? 0.0));
+    // 累计行驶里程按相邻里程差累加：漏记/未加满区间的真实行驶不丢失，
+    // 未加满记录也不会与其下一周期重复计算
+    final double rangeDistance = sumConsecutiveMileage(records);
     final double rangeFuelAmount = records.fold(
       0.0,
       (sum, r) => sum + r.fuelAmount,

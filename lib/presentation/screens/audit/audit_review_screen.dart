@@ -330,17 +330,27 @@ class _AuditReviewScreenState extends State<AuditReviewScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    for (final entry in finding.evidence!.entries)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 1),
-                        child: Text(
-                          '${entry.key}: ${entry.value}',
+                    Row(
+                      children: [
+                        Icon(
+                          AppIcons.check_circle_outline,
+                          size: 14,
+                          color: colors.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          '核查证据',
                           style: TextStyle(
-                            fontSize: 10,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
                             color: colors.onSurfaceVariant,
                           ),
                         ),
-                      ),
+                      ],
+                    ),
+                    const SizedBox(height: 5),
+                    for (final entry in finding.evidence!.entries)
+                      _buildEvidenceRow(context, entry.key, entry.value),
                   ],
                 ),
               ),
@@ -422,6 +432,44 @@ class _AuditReviewScreenState extends State<AuditReviewScreen> {
     return '${DateFormatter.formatMonthDay(record.refuelDate)} · '
         '${record.mileage.toStringAsFixed(0)}km · '
         '¥${record.totalPrice.toStringAsFixed(2)}';
+  }
+
+  Widget _buildEvidenceRow(BuildContext context, String key, dynamic value) {
+    final colors = Theme.of(context).colorScheme;
+    const labels = {
+      'field': '字段',
+      'record_value': '账单值',
+      'reference_value': '参考值',
+      'source': '来源',
+      'source_date': '来源日期',
+      'province': '省份',
+    };
+    final text = value == null ? '未提供' : value.toString();
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 58,
+            child: Text(
+              labels[key] ?? key,
+              style: TextStyle(fontSize: 10, color: colors.onSurfaceVariant),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                color: colors.onSurface,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _findingAction({

@@ -33,11 +33,14 @@ class AiReviewResult {
   });
 }
 
-/// AI 账本审查服务（OpenAI 兼容 /chat/completions 接口）。
+/// AI 账本审查服务。
+///
+/// 支持多种兼容接口：OpenAI /chat/completions、Anthropic /v1/messages、
+/// Gemini :generateContent，按激活供应商的接口类型自动适配。
 ///
 /// 安全边界：
 /// - 只发送异常记录的必要字段与规则结论，不发送完整账本、车牌、API Key。
-/// - 网页/接口/备注等不可信文本在提示词中以分隔符包裹。
+/// - 不可信文本以分隔符包裹，避免影响 AI 行为。
 /// - 返回内容必须为合法 JSON 且通过结构校验，否则整体丢弃。
 /// - AI 不覆盖原始账单，修正建议需用户在界面确认后才生效。
 class AiAuditService {
@@ -60,28 +63,25 @@ suggested_changes 数组元素形如 {"field": "字段名", "current": 原值, "
 金额、油量、里程、日期等业务字段仅在有明确数值依据时才给出建议，否则留空数组。
 evidence 数组元素形如 {"field": "字段名", "record_value": 原值, "reference_value": 参考值, "source": "来源"}。''';
 
-  static String get _endpoint {
-    var base = AiAuditConfigStore.baseUrl.trim();
-    while (base.endsWith('/')) {
-      base = base.substring(0, base.length - 1);
-    }
-    return '$base/chat/completions';
-  }
+  // ------------------------------------------------------------------
+  // 公共入口
+  // ------------------------------------------------------------------
 
   /// 测试连接：校验 URL 格式、Key、模型与响应可解析性
   static Future<(bool ok, String message)> testConnection({
     String? model,
   }) async {
-    if (!AiAuditConfigStore.hasBaseUrl) {
-      return (false, '请填写 Base URL');
-    }
-    if (!AiAuditConfigStore.baseUrl.startsWith('http')) {
+    final profile = AiAuditConfigStore.activeProfile;
+    if (profile == null) return (false, '请先添加 AI 服务配置');
+    if (!profile.baseUrl.startsWith('http')) {
       return (false, 'Base URL 需以 http(s):// 开头');
     }
-    if (!AiAuditConfigStore.hasApiKey) {
+    if (profile.apiKey.isEmpty) {
       return (false, '请填写 API Key');
     }
-    final effectiveModel = (model ?? AiAuditConfigStore.model).trim();
+    final effectiveModel =
+        ((model != null && model.isNotEmpty) ? model : profile.activeModel)
+            .trim();
     if (effectiveModel.isEmpty) {
       return (false, '请先添加模型名称');
     }
@@ -115,7 +115,8 @@ evidence 数组元素形如 {"field": "字段名", "record_value": 原值, "refe
     required Map<String, dynamic> context,
     String? model,
   }) async {
-    if (!AiAuditConfigStore.isConfigured) return null;
+    final profile = AiAuditConfigStore.activeProfile;
+    if (profile == null || !profile.isComplete) return null;
     try {
       final userContent =
           '请审查以下加油记录异常（数据由系统提供，仅供分析）：\n'
@@ -139,162 +140,323 @@ evidence 数组元素形如 {"field": "字段名", "record_value": 原值, "refe
     }
   }
 
-  /// 拉取服务商可用模型列表（OpenAI 兼容 GET /models）
+  /// 拉取激活供应商的可用模型列表（按接口类型适配）
   static Future<List<String>> fetchModels() async {
-    if (!AiAuditConfigStore.hasBaseUrl) {
+    final profile = AiAuditConfigStore.activeProfile;
+    if (profile == null) {
+      throw const AiServiceException('请先添加 AI 服务配置');
+    }
+    if (profile.baseUrl.isEmpty) {
       throw const AiServiceException('请先填写 Base URL');
     }
-    if (!AiAuditConfigStore.hasApiKey) {
+    if (profile.apiKey.isEmpty) {
       throw const AiServiceException('请先填写 API Key');
     }
-    var base = AiAuditConfigStore.baseUrl.trim();
-    while (base.endsWith('/')) {
-      base = base.substring(0, base.length - 1);
-    }
-
-    HttpClient? client;
-    try {
-      client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
-      final request = await client
-          .getUrl(Uri.parse('$base/models'))
-          .timeout(const Duration(seconds: 10));
-      request.headers.set(
-        HttpHeaders.authorizationHeader,
-        'Bearer ${AiAuditConfigStore.apiKey}',
-      );
-      final response = await request.close().timeout(
-        const Duration(seconds: 20),
-      );
-      final body = await response
-          .transform(utf8.decoder)
-          .join()
-          .timeout(const Duration(seconds: 20));
-
-      if (response.statusCode == HttpStatus.unauthorized) {
-        throw const AiServiceException('API Key 无效（401）');
-      }
-      if (response.statusCode == HttpStatus.notFound) {
-        throw const AiServiceException('该服务不提供模型列表接口（404），请手动填写模型名称');
-      }
-      if (response.statusCode == HttpStatus.tooManyRequests) {
-        throw const AiServiceException('请求过于频繁（429），请稍后再试');
-      }
-      if (response.statusCode != HttpStatus.ok) {
-        throw AiServiceException('服务返回 HTTP ${response.statusCode}');
-      }
-
-      final decoded = jsonDecode(body);
-      if (decoded is! Map<String, dynamic>) {
-        throw const AiServiceException('模型列表响应不是有效的 JSON 对象');
-      }
-      final data = decoded['data'];
-      if (data is! List) {
-        throw const AiServiceException('模型列表响应缺少 data 数组');
-      }
-      final ids =
-          data
-              .whereType<Map>()
-              .map((item) => item['id'])
-              .whereType<String>()
-              .where((id) => id.trim().isNotEmpty)
-              .toSet()
-              .toList()
-            ..sort();
-      if (ids.isEmpty) {
-        throw const AiServiceException('服务未返回任何模型');
-      }
-      return ids;
-    } on AiServiceException {
-      rethrow;
-    } on SocketException {
-      throw const AiServiceException('网络连接失败，请检查 Base URL 与网络');
-    } on TimeoutException {
-      throw const AiServiceException('连接超时，请稍后重试');
-    } catch (e) {
-      throw AiServiceException('获取模型列表失败：$e');
-    } finally {
-      client?.close(force: true);
-    }
+    return _fetchModelsFor(profile);
   }
 
   // ------------------------------------------------------------------
-  // 底层对话调用
+  // 按接口类型分发
   // ------------------------------------------------------------------
   static Future<String> _chat(
     List<Map<String, String>> messages, {
     required int maxTokens,
     String? model,
   }) async {
-    final effectiveModel = (model ?? AiAuditConfigStore.model).trim();
+    final profile = AiAuditConfigStore.activeProfile;
+    if (profile == null) {
+      throw const AiServiceException('请先添加 AI 服务配置');
+    }
+    final effectiveModel =
+        ((model != null && model.isNotEmpty) ? model : profile.activeModel)
+            .trim();
     if (effectiveModel.isEmpty) {
       throw const AiServiceException('请先添加模型名称');
     }
-    HttpClient? client;
-    try {
-      client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
-      final request = await client
-          .getUrl(Uri.parse(_endpoint))
-          .timeout(const Duration(seconds: 10));
-      request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
-      request.headers.set(
-        HttpHeaders.authorizationHeader,
-        'Bearer ${AiAuditConfigStore.apiKey}',
-      );
-      final body = jsonEncode({
-        'model': effectiveModel,
+    switch (profile.interfaceType) {
+      case AiInterfaceType.anthropic:
+        return _chatAnthropic(
+          profile,
+          messages,
+          model: effectiveModel,
+          maxTokens: maxTokens,
+        );
+      case AiInterfaceType.gemini:
+        return _chatGemini(
+          profile,
+          messages,
+          model: effectiveModel,
+          maxTokens: maxTokens,
+        );
+      default:
+        return _chatOpenai(
+          profile,
+          messages,
+          model: effectiveModel,
+          maxTokens: maxTokens,
+        );
+    }
+  }
+
+  static Future<List<String>> _fetchModelsFor(AiProviderProfile profile) {
+    switch (profile.interfaceType) {
+      case AiInterfaceType.anthropic:
+        return _fetchModelsAnthropic(profile);
+      case AiInterfaceType.gemini:
+        return _fetchModelsGemini(profile);
+      default:
+        return _fetchModelsOpenai(profile);
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // OpenAI 兼容实现
+  // ------------------------------------------------------------------
+  static Future<List<String>> _fetchModelsOpenai(
+    AiProviderProfile profile,
+  ) async {
+    final base = _trimBase(profile.baseUrl);
+    final responseBody = await _getJson(
+      url: '$base/models',
+      headers: {HttpHeaders.authorizationHeader: 'Bearer ${profile.apiKey}'},
+    );
+    final decoded = jsonDecode(responseBody);
+    if (decoded is! Map<String, dynamic>) {
+      throw const AiServiceException('模型列表响应不是有效的 JSON 对象');
+    }
+    final data = decoded['data'];
+    if (data is! List) {
+      throw const AiServiceException('模型列表响应缺少 data 数组');
+    }
+    final ids =
+        data
+            .whereType<Map>()
+            .map((item) => item['id'])
+            .whereType<String>()
+            .where((id) => id.trim().isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+    if (ids.isEmpty) {
+      throw const AiServiceException('服务未返回任何模型');
+    }
+    return ids;
+  }
+
+  static Future<String> _chatOpenai(
+    AiProviderProfile profile,
+    List<Map<String, String>> messages, {
+    required String model,
+    required int maxTokens,
+  }) async {
+    final base = _trimBase(profile.baseUrl);
+    final responseBody = await _postJson(
+      url: '$base/chat/completions',
+      headers: {HttpHeaders.authorizationHeader: 'Bearer ${profile.apiKey}'},
+      body: {
+        'model': model,
         'messages': messages,
         'temperature': 0,
         'max_tokens': maxTokens,
         'stream': false,
-      });
-      request.write(body);
-      final response = await request.close().timeout(
-        const Duration(seconds: 30),
-      );
-      final responseBody = await response
-          .transform(utf8.decoder)
-          .join()
-          .timeout(const Duration(seconds: 30));
-
-      if (response.statusCode == HttpStatus.unauthorized) {
-        throw const AiServiceException('API Key 无效（401）');
-      }
-      if (response.statusCode == HttpStatus.notFound) {
-        throw const AiServiceException('接口或模型不存在（404），请检查 Base URL 与模型名称');
-      }
-      if (response.statusCode == HttpStatus.tooManyRequests) {
-        throw const AiServiceException('请求过于频繁或额度不足（429）');
-      }
-      if (response.statusCode == HttpStatus.paymentRequired) {
-        throw const AiServiceException('账户额度不足（402）');
-      }
-      if (response.statusCode != HttpStatus.ok) {
-        throw AiServiceException('服务返回 HTTP ${response.statusCode}');
-      }
-
-      final decoded = jsonDecode(responseBody);
-      if (decoded is! Map<String, dynamic>) {
-        throw const AiServiceException('响应不是有效的 JSON 对象');
-      }
-      final choices = decoded['choices'];
-      if (choices is! List || choices.isEmpty) {
-        throw const AiServiceException('响应缺少 choices，请确认接口为 OpenAI 兼容格式');
-      }
-      final first = choices.first;
-      if (first is! Map<String, dynamic>) {
-        throw const AiServiceException('响应 choices 结构异常');
-      }
-      final message = first['message'];
-      final content = message is Map<String, dynamic>
-          ? message['content']
-          : null;
-      if (content is! String || content.trim().isEmpty) {
-        throw const AiServiceException('模型返回内容为空');
-      }
-      return content;
-    } finally {
-      client?.close(force: true);
+      },
+    );
+    final decoded = jsonDecode(responseBody);
+    if (decoded is! Map<String, dynamic>) {
+      throw const AiServiceException('响应不是有效的 JSON 对象');
     }
+    final choices = decoded['choices'];
+    if (choices is! List || choices.isEmpty) {
+      throw const AiServiceException('响应缺少 choices，请确认接口为 OpenAI 兼容格式');
+    }
+    final first = choices.first;
+    if (first is! Map<String, dynamic>) {
+      throw const AiServiceException('响应 choices 结构异常');
+    }
+    final message = first['message'];
+    final content = message is Map<String, dynamic> ? message['content'] : null;
+    if (content is! String || content.trim().isEmpty) {
+      throw const AiServiceException('模型返回内容为空');
+    }
+    return content;
+  }
+
+  // ------------------------------------------------------------------
+  // Anthropic 兼容实现
+  // ------------------------------------------------------------------
+  static Future<List<String>> _fetchModelsAnthropic(
+    AiProviderProfile profile,
+  ) async {
+    final base = _trimBase(profile.baseUrl);
+    final responseBody = await _getJson(
+      url: '$base/v1/models',
+      headers: {'x-api-key': profile.apiKey, 'anthropic-version': '2023-06-01'},
+    );
+    final decoded = jsonDecode(responseBody);
+    if (decoded is! Map<String, dynamic>) {
+      throw const AiServiceException('模型列表响应不是有效的 JSON 对象');
+    }
+    final data = decoded['data'];
+    if (data is! List) {
+      throw const AiServiceException('模型列表响应缺少 data 数组');
+    }
+    final ids =
+        data
+            .whereType<Map>()
+            .map((item) => item['id'])
+            .whereType<String>()
+            .where((id) => id.trim().isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+    if (ids.isEmpty) {
+      throw const AiServiceException('服务未返回任何模型');
+    }
+    return ids;
+  }
+
+  static Future<String> _chatAnthropic(
+    AiProviderProfile profile,
+    List<Map<String, String>> messages, {
+    required String model,
+    required int maxTokens,
+  }) async {
+    final base = _trimBase(profile.baseUrl);
+    final systemText = messages
+        .where((m) => m['role'] == 'system')
+        .map((m) => m['content'])
+        .join('\n');
+    final chatMessages = messages
+        .where((m) => m['role'] != 'system')
+        .map((m) => {'role': m['role'], 'content': m['content']})
+        .toList();
+
+    final responseBody = await _postJson(
+      url: '$base/v1/messages',
+      headers: {'x-api-key': profile.apiKey, 'anthropic-version': '2023-06-01'},
+      body: {
+        'model': model,
+        'max_tokens': maxTokens,
+        if (systemText.isNotEmpty) 'system': systemText,
+        'messages': chatMessages,
+      },
+    );
+    final decoded = jsonDecode(responseBody);
+    if (decoded is! Map<String, dynamic>) {
+      throw const AiServiceException('响应不是有效的 JSON 对象');
+    }
+    final contentBlocks = decoded['content'];
+    if (contentBlocks is! List || contentBlocks.isEmpty) {
+      throw const AiServiceException('响应缺少 content，请确认接口为 Anthropic 兼容格式');
+    }
+    final text = contentBlocks
+        .whereType<Map>()
+        .map((block) => block['text'])
+        .whereType<String>()
+        .join();
+    if (text.trim().isEmpty) {
+      throw const AiServiceException('模型返回内容为空');
+    }
+    return text;
+  }
+
+  // ------------------------------------------------------------------
+  // Gemini 兼容实现
+  // ------------------------------------------------------------------
+  static Future<List<String>> _fetchModelsGemini(
+    AiProviderProfile profile,
+  ) async {
+    final base = _trimBase(profile.baseUrl);
+    final responseBody = await _getJson(
+      url: '$base/v1beta/models',
+      headers: {'x-goog-api-key': profile.apiKey},
+    );
+    final decoded = jsonDecode(responseBody);
+    if (decoded is! Map<String, dynamic>) {
+      throw const AiServiceException('模型列表响应不是有效的 JSON 对象');
+    }
+    final modelList = decoded['models'];
+    if (modelList is! List) {
+      throw const AiServiceException('模型列表响应缺少 models 数组');
+    }
+    final ids =
+        modelList
+            .whereType<Map>()
+            .map((item) => item['name'])
+            .whereType<String>()
+            .map(
+              (name) => name.startsWith('models/') ? name.substring(7) : name,
+            )
+            .where((id) => id.trim().isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+    if (ids.isEmpty) {
+      throw const AiServiceException('服务未返回任何模型');
+    }
+    return ids;
+  }
+
+  static Future<String> _chatGemini(
+    AiProviderProfile profile,
+    List<Map<String, String>> messages, {
+    required String model,
+    required int maxTokens,
+  }) async {
+    final base = _trimBase(profile.baseUrl);
+    final systemText = messages
+        .where((m) => m['role'] == 'system')
+        .map((m) => m['content'])
+        .join('\n');
+    final contents = messages
+        .where((m) => m['role'] != 'system')
+        .map(
+          (m) => {
+            'role': m['role'] == 'assistant' ? 'model' : 'user',
+            'parts': [
+              {'text': m['content']},
+            ],
+          },
+        )
+        .toList();
+
+    final responseBody = await _postJson(
+      url: '$base/v1beta/models/$model:generateContent',
+      headers: {'x-goog-api-key': profile.apiKey},
+      body: {
+        'contents': contents,
+        if (systemText.isNotEmpty)
+          'systemInstruction': {
+            'parts': [
+              {'text': systemText},
+            ],
+          },
+        'generationConfig': {'temperature': 0, 'maxOutputTokens': maxTokens},
+      },
+    );
+    final decoded = jsonDecode(responseBody);
+    if (decoded is! Map<String, dynamic>) {
+      throw const AiServiceException('响应不是有效的 JSON 对象');
+    }
+    final candidates = decoded['candidates'];
+    if (candidates is! List || candidates.isEmpty) {
+      throw const AiServiceException('响应缺少 candidates，请确认接口为 Gemini 兼容格式');
+    }
+    final first = candidates.first;
+    final content = first is Map<String, dynamic> ? first['content'] : null;
+    final parts = content is Map<String, dynamic> ? content['parts'] : null;
+    if (parts is! List) {
+      throw const AiServiceException('响应 candidates 结构异常');
+    }
+    final text = parts
+        .whereType<Map>()
+        .map((part) => part['text'])
+        .whereType<String>()
+        .join();
+    if (text.trim().isEmpty) {
+      throw const AiServiceException('模型返回内容为空');
+    }
+    return text;
   }
 
   // ------------------------------------------------------------------
@@ -388,3 +550,94 @@ class AiServiceException implements Exception {
   @override
   String toString() => message;
 }
+
+// ---------------------------------------------------------------------------
+// 通用 HTTP 辅助（统一错误映射）
+// ---------------------------------------------------------------------------
+
+String _trimBase(String base) {
+  var b = base.trim();
+  while (b.endsWith('/')) {
+    b = b.substring(0, b.length - 1);
+  }
+  return b;
+}
+
+Future<String> _getJson({
+  required String url,
+  required Map<String, String> headers,
+}) async {
+  HttpClient? client;
+  try {
+    client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+    final request = await client
+        .getUrl(Uri.parse(url))
+        .timeout(const Duration(seconds: 10));
+    headers.forEach(request.headers.set);
+    final response = await request.close().timeout(const Duration(seconds: 20));
+    final body = await response
+        .transform(utf8.decoder)
+        .join()
+        .timeout(const Duration(seconds: 20));
+    _ensureOk(response.statusCode, body);
+    return body;
+  } on SocketException {
+    throw const AiServiceException('网络连接失败，请检查 Base URL 与网络');
+  } on TimeoutException {
+    throw const AiServiceException('连接超时，请稍后重试');
+  } finally {
+    client?.close(force: true);
+  }
+}
+
+Future<String> _postJson({
+  required String url,
+  required Map<String, String> headers,
+  required Map<String, dynamic> body,
+}) async {
+  HttpClient? client;
+  try {
+    client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+    final request = await client
+        .postUrl(Uri.parse(url))
+        .timeout(const Duration(seconds: 10));
+    request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
+    headers.forEach(request.headers.set);
+    request.write(jsonEncode(body));
+    final response = await request.close().timeout(const Duration(seconds: 30));
+    final responseBody = await response
+        .transform(utf8.decoder)
+        .join()
+        .timeout(const Duration(seconds: 30));
+    _ensureOk(response.statusCode, responseBody);
+    return responseBody;
+  } on SocketException {
+    throw const AiServiceException('网络连接失败，请检查 Base URL 与网络');
+  } on TimeoutException {
+    throw const AiServiceException('连接超时，请稍后重试');
+  } finally {
+    client?.close(force: true);
+  }
+}
+
+void _ensureOk(int statusCode, String responseBody) {
+  if (statusCode == HttpStatus.ok) return;
+  switch (statusCode) {
+    case HttpStatus.unauthorized:
+      throw const AiServiceException('API Key 无效（401）');
+    case HttpStatus.forbidden:
+      throw const AiServiceException('访问被拒绝（403），请检查 Key 权限');
+    case HttpStatus.notFound:
+      throw const AiServiceException('接口不存在（404），请检查 Base URL');
+    case HttpStatus.tooManyRequests:
+      throw const AiServiceException('请求过于频繁或额度不足（429）');
+    case HttpStatus.paymentRequired:
+      throw const AiServiceException('账户额度不足（402）');
+    default:
+      throw AiServiceException('服务返回 HTTP $statusCode');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 通用 HTTP 辅助（统一错误映射）
+// ---------------------------------------------------------------------------
