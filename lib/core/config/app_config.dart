@@ -37,10 +37,15 @@ class AppConfig {
   static const String githubActionsUrl = '$githubRepoUrl/actions';
   static const String githubLatestReleaseApiUrl =
       'https://api.github.com/repos/1378944437/BearFuel/releases/latest';
+  static const String githubReleasesAtomUrl =
+      'https://github.com/1378944437/BearFuel/releases.atom';
+  static const String githubRawPubspecUrl =
+      'https://raw.githubusercontent.com/1378944437/BearFuel/main/pubspec.yaml';
+  static const String githubRawChangelogUrl =
+      'https://raw.githubusercontent.com/1378944437/BearFuel/main/CHANGELOG.md';
 
   /// 远端优先发布命令：推送 vX.Y.Z 标签即触发 GitHub Actions 构建并发布 Release
-  static const String releaseCommand =
-      'git tag v0.2.15 && git push origin main v0.2.15';
+  static const String releaseCommand = 'git push origin main --tags';
 
   /// 本地构建命令（可选，用于发布前自验或离线安装）
   static const String localBuildCommand =

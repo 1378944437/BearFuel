@@ -63,6 +63,16 @@ suggested_changes 数组元素形如 {"field": "字段名", "current": 原值, "
 金额、油量、里程、日期等业务字段仅在有明确数值依据时才给出建议，否则留空数组。
 evidence 数组元素形如 {"field": "字段名", "record_value": 原值, "reference_value": 参考值, "source": "来源"}。''';
 
+  static const String _priceSystemPrompt = '''
+你是 BearFuel 的油价数据审查助手。
+只能依据输入的接口油价和调价日历分析，不得猜测、补造或修改官方调价金额。
+如果调价金额缺失，必须明确返回 insufficient_evidence，并说明缺少什么官方依据。
+请只返回 JSON；如果无法返回 JSON，普通文本结论也会被作为证据不足展示。
+JSON 可包含字段：status, severity, type, title, explanation, suggestion, evidence, confidence, requires_user_confirmation。
+status 只能是 normal / info / warning / critical / insufficient_evidence。
+severity 只能是 info / warning / critical。
+''';
+
   // ------------------------------------------------------------------
   // 公共入口
   // ------------------------------------------------------------------
@@ -138,6 +148,142 @@ evidence 数组元素形如 {"field": "字段名", "record_value": 原值, "refe
       AppConfig.log('AI 审查异常: $e');
       return null;
     }
+  }
+
+  /// 专用油价审查：使用独立提示词与宽松结果兜底，
+  /// 不要求账本异常字段，避免油价分析被误判为无效结果。
+  static Future<AiReviewResult?> reviewPriceData({
+    required Map<String, dynamic> context,
+    String? model,
+  }) async {
+    final profile = AiAuditConfigStore.activeProfile;
+    if (profile == null || !profile.isComplete) return null;
+    try {
+      final userContent =
+          '请审查以下实时油价/调价日历数据：\n'
+          '<<<PRICE_DATA\n${const JsonEncoder.withIndent('  ').convert(context)}\nPRICE_DATA>>>\n'
+          '严禁猜测缺失金额；请返回 JSON，字段可简化为 status、title、analysis、message、result、suggestion、evidence、confidence。';
+      final raw = await _chat(
+        [
+          {'role': 'system', 'content': _priceSystemPrompt},
+          {'role': 'user', 'content': userContent},
+        ],
+        maxTokens: 900,
+        model: model,
+      );
+      return parsePriceReviewResponse(raw);
+    } on AiServiceException catch (e) {
+      AppConfig.log('AI 油价审查失败: ${e.message}');
+      return null;
+    } catch (e) {
+      AppConfig.log('AI 油价审查异常: $e');
+      return null;
+    }
+  }
+
+  /// 解析油价审查响应，兼容完整 JSON、简化 JSON、代码围栏和普通文本。
+  /// 普通文本不会被丢弃，而是以低置信度的证据不足结果展示。
+  static AiReviewResult parsePriceReviewResponse(String raw) {
+    final text = raw.trim();
+    try {
+      final jsonText = _extractJsonObject(text);
+      final decoded = jsonDecode(jsonText);
+      if (decoded is Map<String, dynamic>) {
+        return _parsePriceMap(decoded);
+      }
+    } catch (_) {
+      // 继续走普通文本兜底，避免油价页面只显示“未返回有效结果”。
+    }
+    return AiReviewResult(
+      status: 'insufficient_evidence',
+      severity: 'info',
+      type: 'price_review',
+      title: 'AI 油价审查结果（证据不足）',
+      explanation: text.isEmpty ? '模型未返回可展示的油价分析内容。' : text,
+      suggestion: '请以接口原始数据和官方调价公告为准；AI 不会补造缺失金额。',
+      confidence: 'low',
+      requiresUserConfirmation: true,
+    );
+  }
+
+  static String _extractJsonObject(String raw) {
+    var text = raw.trim();
+    if (text.startsWith('```')) {
+      text = text.replaceFirst(RegExp(r'^```[a-zA-Z]*\\s*'), '');
+      final fenceEnd = text.lastIndexOf('```');
+      if (fenceEnd >= 0) text = text.substring(0, fenceEnd);
+      text = text.trim();
+    }
+    final start = text.indexOf('{');
+    final end = text.lastIndexOf('}');
+    if (start < 0 || end <= start) {
+      throw const FormatException('AI response has no JSON object');
+    }
+    return text.substring(start, end + 1);
+  }
+
+  static AiReviewResult _parsePriceMap(Map<String, dynamic> decoded) {
+    String? textValue(dynamic value) =>
+        value is String && value.trim().isNotEmpty ? value.trim() : null;
+
+    final status =
+        textValue(decoded['status']) ??
+        (decoded['insufficient_evidence'] == true
+            ? 'insufficient_evidence'
+            : 'info');
+    const validStatuses = {
+      'normal',
+      'info',
+      'warning',
+      'critical',
+      'insufficient_evidence',
+    };
+    final normalizedStatus = validStatuses.contains(status) ? status : 'info';
+    final severityValue = textValue(decoded['severity']);
+    const validSeverities = {'info', 'warning', 'critical'};
+    final severity = validSeverities.contains(severityValue)
+        ? severityValue!
+        : normalizedStatus == 'critical'
+        ? 'critical'
+        : normalizedStatus == 'warning'
+        ? 'warning'
+        : 'info';
+    final explanation =
+        textValue(decoded['explanation']) ??
+        textValue(decoded['analysis']) ??
+        textValue(decoded['message']) ??
+        textValue(decoded['result']);
+    if (explanation == null) {
+      throw const FormatException('AI price response has no analysis text');
+    }
+
+    List<Map<String, dynamic>> readMapList(dynamic value) {
+      if (value is! List) return const [];
+      return value
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList();
+    }
+
+    return AiReviewResult(
+      status: normalizedStatus,
+      severity: severity,
+      type: textValue(decoded['type']) ?? 'price_review',
+      title: textValue(decoded['title']) ?? 'AI 油价审查结果',
+      explanation: explanation,
+      suggestion:
+          textValue(decoded['suggestion']) ??
+          textValue(decoded['recommendation']) ??
+          (normalizedStatus == 'insufficient_evidence'
+              ? '缺少足够的官方调价依据，请以接口原始数据和官方公告为准。'
+              : null),
+      evidence: readMapList(decoded['evidence']),
+      suggestedChanges: const [],
+      confidence:
+          textValue(decoded['confidence']) ??
+          (normalizedStatus == 'insufficient_evidence' ? 'low' : null),
+      requiresUserConfirmation: true,
+    );
   }
 
   /// 拉取激活供应商的可用模型列表（按接口类型适配）

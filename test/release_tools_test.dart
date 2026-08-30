@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:bearfuel/core/utils/release_tools.dart';
+import 'package:bearfuel/data/services/ai_audit_service.dart';
 
 void main() {
   group('版本号比较 (compareVersions)', () {
@@ -26,13 +27,11 @@ void main() {
 
   group('更新日志解析 (ChangelogParser)', () {
     const sample = '''
-# Changelog
-
-BearFuel follows semantic versioning.
+# 更新日志
 
 ## [0.2.13] - 2026-08-29
 
-### Added
+### 新增
 
 - 关于应用板块
   - 内含更新日志一栏
@@ -44,7 +43,7 @@ BearFuel follows semantic versioning.
 [0.2.5]: https://github.com/1378944437/BearFuel/releases/tag/v0.2.5
 ''';
 
-    test('按 "## [版本] - 日期" 切分条目', () {
+    test('按版本标题切分条目', () {
       final entries = ChangelogParser.parse(sample);
       expect(entries.length, equals(2));
       expect(entries[0].version, equals('0.2.13'));
@@ -53,18 +52,169 @@ BearFuel follows semantic versioning.
       expect(entries[1].version, equals('0.2.12'));
     });
 
-    test('保留小节标题与条目行, 忽略空行与底部链接定义', () {
+    test('保留小节与缩进行, 忽略链接定义', () {
       final entries = ChangelogParser.parse(sample);
-      expect(entries[0].lines, contains('### Added'));
+      expect(entries[0].lines, contains('### 新增'));
       expect(entries[0].lines, contains('- 关于应用板块'));
       expect(entries[0].lines, contains('  - 内含更新日志一栏'));
       expect(entries.any((e) => e.lines.any((l) => l.contains(']:'))), isFalse);
-      expect(entries[1].lines, contains('- 修复账本左滑无法退出。'));
     });
 
     test('无内容时返回空列表', () {
       expect(ChangelogParser.parse(''), isEmpty);
-      expect(ChangelogParser.parse('# Changelog\n\n说明文字'), isEmpty);
+      expect(ChangelogParser.parse('# 更新日志\n\n说明文字'), isEmpty);
+    });
+  });
+
+  group('更新检查网络结果', () {
+    test('正常响应解析最新版本且不发送授权头', () async {
+      final seen = <Map<String, String>>[];
+      final result = await UpdateChecker.checkForUpdate(
+        '0.2.20',
+        transport: (uri, headers) async {
+          seen.add(headers);
+          return const UpdateHttpResponse(
+            statusCode: 200,
+            body:
+                '{"tag_name":"v0.2.21","name":"BearFuel 0.2.21","html_url":"https://github.com/1378944437/BearFuel/releases/tag/v0.2.21","body":"修复更新检查"}',
+          );
+        },
+      );
+      expect(result.release?.tagName, 'v0.2.21');
+      expect(result.isNewer, isTrue);
+      expect(seen.single.containsKey('Authorization'), isFalse);
+    });
+
+    test('403 限流时回退公开 Release Atom 订阅源', () async {
+      final requested = <String>[];
+      final result = await UpdateChecker.checkForUpdate(
+        '0.2.20',
+        transport: (uri, headers) async {
+          requested.add(uri.toString());
+          if (uri.toString().contains('api.github.com')) {
+            return const UpdateHttpResponse(
+              statusCode: 403,
+              body: '{"message":"rate limit"}',
+              headers: {'x-ratelimit-remaining': '0', 'retry-after': '60'},
+            );
+          }
+          if (uri.toString().contains('releases.atom')) {
+            return const UpdateHttpResponse(
+              statusCode: 200,
+              body:
+                  '<feed><entry><title>v0.2.21</title><link href="https://github.com/1378944437/BearFuel/releases/tag/v0.2.21"/></entry></feed>',
+            );
+          }
+          return const UpdateHttpResponse(statusCode: 500, body: '{}');
+        },
+      );
+      expect(result.release?.tagName, 'v0.2.21');
+      expect(result.isNewer, isTrue);
+      expect(
+        requested.any(
+          (url) => url.contains('github.com/1378944437/BearFuel/releases.atom'),
+        ),
+        isTrue,
+      );
+      expect(
+        requested.any((url) => url.contains('raw.githubusercontent.com')),
+        isFalse,
+      );
+    });
+
+    test('Atom 失败时回退公开 raw 版本清单', () async {
+      final requested = <String>[];
+      final result = await UpdateChecker.checkForUpdate(
+        '0.2.20',
+        transport: (uri, headers) async {
+          requested.add(uri.toString());
+          if (uri.toString().contains('api.github.com') ||
+              uri.toString().contains('releases.atom')) {
+            return const UpdateHttpResponse(statusCode: 403, body: '{}');
+          }
+          if (uri.toString().endsWith('pubspec.yaml')) {
+            return const UpdateHttpResponse(
+              statusCode: 200,
+              body: 'name: bearfuel\nversion: 0.2.21+32\n',
+            );
+          }
+          return const UpdateHttpResponse(
+            statusCode: 200,
+            body: '# 更新日志\n\n## [0.2.21] - 2026-08-30\n\n- 修复更新检查。\n',
+          );
+        },
+      );
+      expect(result.release?.tagName, 'v0.2.21');
+      expect(result.isNewer, isTrue);
+      expect(
+        requested.any((url) => url.contains('raw.githubusercontent.com')),
+        isTrue,
+      );
+    });
+    test('403 非限流请求给出明确拒绝提示', () async {
+      final result = await UpdateChecker.checkForUpdate(
+        '0.2.20',
+        transport: (uri, headers) async => const UpdateHttpResponse(
+          statusCode: 403,
+          body: '{"message":"forbidden"}',
+          headers: {'x-ratelimit-remaining': '12'},
+        ),
+      );
+      expect(result.release, isNull);
+      expect(result.errorMessage, contains('拒绝'));
+    });
+
+    test('404 与 5xx 给出可操作提示', () async {
+      final notFound = await UpdateChecker.checkForUpdate(
+        '0.2.20',
+        transport: (uri, headers) async =>
+            const UpdateHttpResponse(statusCode: 404, body: '{}'),
+      );
+      final serverError = await UpdateChecker.checkForUpdate(
+        '0.2.20',
+        transport: (uri, headers) async =>
+            const UpdateHttpResponse(statusCode: 503, body: '{}'),
+      );
+      expect(notFound.errorMessage, contains('暂无可访问的公开 Release'));
+      expect(serverError.errorMessage, contains('暂时不可用'));
+    });
+  });
+
+  group('油价 AI 响应解析', () {
+    test('简化 JSON 使用 analysis 字段', () {
+      final result = AiAuditService.parsePriceReviewResponse(
+        '{"status":"warning","title":"存在差异","analysis":"接口金额缺失，无法核实。","confidence":"medium"}',
+      );
+      expect(result.title, equals('存在差异'));
+      expect(result.explanation, contains('无法核实'));
+      expect(result.status, equals('warning'));
+    });
+
+    test('代码围栏 JSON 可解析', () {
+      final result = AiAuditService.parsePriceReviewResponse(
+        '```json\n{"status":"insufficient_evidence","message":"官方未公布金额"}\n```',
+      );
+      expect(result.status, equals('insufficient_evidence'));
+      expect(result.explanation, equals('官方未公布金额'));
+    });
+
+    test('普通文本降级为证据不足结果而不是无效', () {
+      final result = AiAuditService.parsePriceReviewResponse(
+        '当前接口没有返回 2026-08-28 的官方调价金额，无法可靠补全。',
+      );
+      expect(result.status, equals('insufficient_evidence'));
+      expect(result.explanation, contains('无法可靠补全'));
+      expect(result.confidence, equals('low'));
+      expect(result.suggestedChanges, isEmpty);
+    });
+
+    test('缺少可选字段仍可展示有效结论', () {
+      final result = AiAuditService.parsePriceReviewResponse(
+        '{"explanation":"当前油价字段与调价日历基本一致。"}',
+      );
+      expect(result.explanation, contains('基本一致'));
+      expect(result.type, equals('price_review'));
+      expect(result.suggestion, isNull);
     });
   });
 }

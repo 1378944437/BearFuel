@@ -367,7 +367,7 @@ class _NationalFuelPriceScreenState extends State<NationalFuelPriceScreen> {
       ],
     };
 
-    final result = await AiAuditService.reviewFinding(
+    final result = await AiAuditService.reviewPriceData(
       context: contextData,
       model: model,
     );
