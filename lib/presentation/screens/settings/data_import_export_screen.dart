@@ -12,6 +12,7 @@ import '../../../data/database/database_helper.dart';
 import '../../../providers/vehicle_provider.dart';
 import '../../../providers/refuel_provider.dart';
 import '../../../providers/expense_provider.dart';
+import '../../../providers/weather_provider.dart';
 import '../../widgets/custom_card.dart';
 
 /// 小熊油耗全格式导入、CSV 导出与本地全库数据安全备份中心
@@ -229,6 +230,7 @@ class _DataImportExportScreenState extends State<DataImportExportScreen>
         final vehicleProv = context.read<VehicleProvider>();
         await vehicleProv.loadVehicles();
         if (!mounted) return;
+        context.read<WeatherProvider>().clearCachedState();
         final currentVehicle = vehicleProv.currentVehicle;
         if (currentVehicle != null) {
           final vId = currentVehicle.id;

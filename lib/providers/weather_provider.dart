@@ -29,6 +29,16 @@ class WeatherProvider extends ChangeNotifier {
   bool get isRefreshing => _isRefreshing;
   UserLocation? get actualLocation => _actualLocation;
 
+  /// 清理全量备份恢复后的旧天气内存状态。
+  void clearCachedState() {
+    _current = null;
+    _snapshots = [];
+    _requestKey = null;
+    _lastFetchedAt = null;
+    _statusText = '尚未读取在线天气';
+    notifyListeners();
+  }
+
   Future<void> refreshForLocation({
     required String city,
     Iterable<DateTime> referenceDates = const [],
