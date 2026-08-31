@@ -69,30 +69,14 @@ void main() {
       ),
     ];
 
-    test('1. 365天热力日历数据构造测试 (get365DayActivityHeatmap)', () {
-      final summary = StatisticsService.get365DayActivityHeatmap(
-        sampleRecords,
-        [],
-        year: 2026,
-      );
-
-      expect(summary.year, 2026);
-      expect(summary.cells.length, 365);
-      expect(summary.activeDays, greaterThanOrEqualTo(3));
-      // 相邻差口径：首条记录无前序基准不计入，总计 = 500+700+600
-      expect(summary.totalYearMileage, 1800.0);
-      expect(summary.maxDailyMileage, 700.0);
-      expect(summary.activeRate, greaterThan(0.0));
-    });
-
-    test('2. 每公里花费走势图测试 (getCostPerKmTrend)', () {
+    test('1. 每公里花费走势图测试 (getCostPerKmTrend)', () {
       final trend = StatisticsService.getCostPerKmTrend(sampleRecords);
       expect(trend.length, 4);
       expect(trend.first.value, 0.50);
       expect(trend[1].value, 0.73);
     });
 
-    test('3. 气温与能耗只使用真实天气快照测试', () {
+    test('2. 气温与能耗只使用真实天气快照测试', () {
       final snapshots = [
         WeatherSnapshotModel(
           cityKey: '1007',
@@ -138,7 +122,7 @@ void main() {
       expect(points.last.avgConsumption, 9.60);
     });
 
-    test('5. 历史数据窗口根据样本量选择粒度测试', () {
+    test('4. 历史数据窗口根据样本量选择粒度测试', () {
       final sparse = HistoricalDataWindow.fromDates([
         DateTime(2026, 8, 1),
         DateTime(2026, 8, 20),

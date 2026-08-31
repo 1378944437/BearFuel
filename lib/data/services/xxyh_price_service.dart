@@ -133,10 +133,7 @@ class XxyhFuelPriceService {
         _lastErrorMessage = '小熊油耗页面解析失败（结构可能已变化）';
         return usableCached;
       }
-      await prefs.setString(
-        _cacheKey(province),
-        jsonEncode(parsed.toJson()),
-      );
+      await prefs.setString(_cacheKey(province), jsonEncode(parsed.toJson()));
       return parsed;
     } catch (e) {
       _lastErrorMessage = '小熊油耗抓取异常：$e';
@@ -165,8 +162,7 @@ class XxyhFuelPriceService {
       final cells = row.querySelectorAll('td');
       if (cells.length < 4) continue;
       final regionRaw = cells.first.text.trim();
-      if (normalizeRegionName(regionRaw) !=
-          normalizeRegionName(province)) {
+      if (normalizeRegionName(regionRaw) != normalizeRegionName(province)) {
         continue;
       }
       final gas92 = _parsePrice(cells[1].text);
@@ -207,8 +203,11 @@ class XxyhFuelPriceService {
     ).firstMatch(htmlBody.substring(index, index + 60));
     if (match == null) return null;
     final now = DateTime.now();
-    var date = DateTime(now.year, int.parse(match.group(1)!),
-        int.parse(match.group(2)!));
+    var date = DateTime(
+      now.year,
+      int.parse(match.group(1)!),
+      int.parse(match.group(2)!),
+    );
     // 页面只给 MM-DD：上次调价不可能晚于今天 15 天以上（应为去年），
     // 下次调价不可能早于今天 15 天以上（应为明年）。
     if (label == '上次调价' && date.isAfter(now.add(const Duration(days: 15)))) {
@@ -224,13 +223,13 @@ class XxyhFuelPriceService {
   static Future<String?> _fetchPage(String province) async {
     HttpClient? client;
     try {
-      final uri = Uri.parse(provinceEndpoint).replace(queryParameters: {
-        'province': province,
-      });
+      final uri = Uri.parse(
+        provinceEndpoint,
+      ).replace(queryParameters: {'province': province});
       client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
-      final request = await client.getUrl(uri).timeout(
-        const Duration(seconds: 10),
-      );
+      final request = await client
+          .getUrl(uri)
+          .timeout(const Duration(seconds: 10));
       request.headers.set(HttpHeaders.acceptHeader, 'text/html');
       request.headers.set(
         HttpHeaders.userAgentHeader,

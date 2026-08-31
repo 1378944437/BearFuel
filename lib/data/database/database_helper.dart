@@ -9,13 +9,122 @@ import '../models/expense_record_model.dart';
 import '../models/weather_snapshot_model.dart';
 
 /// 批量导入结果统计（含查重信息）
+/// 单辆车的导入计数，用于按车辆分组的导入报告
+class VehicleImportCount {
+  final int inserted;
+  final int skipped;
+
+  const VehicleImportCount({this.inserted = 0, this.skipped = 0});
+
+  VehicleImportCount copyWith({int? inserted, int? skipped}) {
+    return VehicleImportCount(
+      inserted: inserted ?? this.inserted,
+      skipped: skipped ?? this.skipped,
+    );
+  }
+}
+
+/// 备份金额一致性问题的类型
+enum BackupAmountIssueKind {
+  /// 量价关系不成立：机显金额与 加油量 × 单价 不符
+  quantityPriceMismatch,
+
+  /// 优惠金额为负
+  negativeDiscount,
+}
+
+/// 单条记录的金额一致性问题
+class BackupAmountIssue {
+  final String recordId;
+  final BackupAmountIssueKind kind;
+  final double actual;
+  final double expected;
+
+  const BackupAmountIssue({
+    required this.recordId,
+    required this.kind,
+    required this.actual,
+    required this.expected,
+  });
+
+  String get description {
+    switch (kind) {
+      case BackupAmountIssueKind.quantityPriceMismatch:
+        return '机显金额 ${actual.toStringAsFixed(2)} 与 加油量×单价 '
+            '${expected.toStringAsFixed(2)} 不符';
+      case BackupAmountIssueKind.negativeDiscount:
+        return '优惠金额为负：${actual.toStringAsFixed(2)}';
+    }
+  }
+}
+
+/// 备份金额一致性检查报告
+class BackupConsistencyReport {
+  final List<BackupAmountIssue> issues;
+
+  /// 因缺少优惠金额而无法核验量价关系的记录数
+  final int unverifiableCount;
+
+  const BackupConsistencyReport({
+    this.issues = const [],
+    this.unverifiableCount = 0,
+  });
+
+  bool get isClean => issues.isEmpty;
+
+  /// 供界面展示的问题摘要（最多列出 5 条）
+  String summary({int maxItems = 5}) {
+    if (isClean) return '';
+    final shown = issues
+        .take(maxItems)
+        .map((i) => '${i.recordId}：${i.description}');
+    final more = issues.length > maxItems
+        ? '\n…另有 ${issues.length - maxItems} 条'
+        : '';
+    return '${shown.join('\n')}$more';
+  }
+}
+
+/// 全量恢复的结果。除成功与否，还需把金额一致性问题回传给界面。
+class BackupRestoreResult {
+  final bool success;
+
+  /// 失败或提示信息，成功且无问题时为 null
+  final String? message;
+
+  final BackupConsistencyReport consistency;
+
+  const BackupRestoreResult({
+    required this.success,
+    this.message,
+    this.consistency = const BackupConsistencyReport(),
+  });
+}
+
+/// 跳过原因常量，供导入报告逐条归类
+class ImportSkipReason {
+  /// 与库内已有记录重复
+  static const duplicateInDb = 'duplicate_in_db';
+
+  /// 与本批次内前序记录重复
+  static const duplicateInBatch = 'duplicate_in_batch';
+}
+
 class BatchImportStats {
   final int inserted;
   final int skippedDuplicates;
 
+  /// 跳过原因归类，键见 [ImportSkipReason]
+  final Map<String, int> skipReasons;
+
+  /// 按车辆分组的导入结果，键为 vehicleId
+  final Map<String, VehicleImportCount> byVehicle;
+
   const BatchImportStats({
     required this.inserted,
     required this.skippedDuplicates,
+    this.skipReasons = const {},
+    this.byVehicle = const {},
   });
 }
 
@@ -55,7 +164,7 @@ class DatabaseHelper {
 
       final db = await openDatabase(
         path,
-        version: 4,
+        version: 6,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
         onConfigure: (db) async {
@@ -141,6 +250,22 @@ class DatabaseHelper {
           'ALTER TABLE refuel_records ADD COLUMN fuel_warning_light INTEGER',
         );
       }
+      if (!refuelColNames.contains('source_fuel_consumption')) {
+        await db.execute(
+          'ALTER TABLE refuel_records ADD COLUMN source_fuel_consumption REAL',
+        );
+      }
+      if (!refuelColNames.contains('source_data_quality')) {
+        await db.execute(
+          'ALTER TABLE refuel_records ADD COLUMN source_data_quality TEXT',
+        );
+      }
+      if (!refuelColNames.contains('is_odometer_reset')) {
+        await db.execute(
+          'ALTER TABLE refuel_records ADD COLUMN '
+          'is_odometer_reset INTEGER NOT NULL DEFAULT 0',
+        );
+      }
     }
 
     // 审计表自愈
@@ -181,12 +306,15 @@ class DatabaseHelper {
         gas_station TEXT,
         is_full_tank INTEGER NOT NULL DEFAULT 1,
         is_forgot_previous INTEGER NOT NULL DEFAULT 0,
+        is_odometer_reset INTEGER NOT NULL DEFAULT 0,
         discount_amount REAL,
         fuel_warning_light INTEGER,
         note TEXT,
         fuel_consumption REAL,
         cost_per_km REAL,
         distance REAL,
+        source_fuel_consumption REAL,
+        source_data_quality TEXT,
         created_at TEXT NOT NULL,
         FOREIGN KEY (vehicle_id) REFERENCES vehicles (id) ON DELETE CASCADE
       )
@@ -463,6 +591,34 @@ class DatabaseHelper {
         );
       }
       await _createAuditTables(db);
+    }
+    if (oldVersion < 5) {
+      // v5: 保留导入源文件的原始油耗与数据质量标记，
+      // 与本地重算值分离，避免派生值覆盖原始事实。
+      final refuelCols = await db.rawQuery('PRAGMA table_info(refuel_records)');
+      final names = refuelCols.map((c) => c['name'] as String).toSet();
+      if (!names.contains('source_fuel_consumption')) {
+        await db.execute(
+          'ALTER TABLE refuel_records ADD COLUMN source_fuel_consumption REAL',
+        );
+      }
+      if (!names.contains('source_data_quality')) {
+        await db.execute(
+          'ALTER TABLE refuel_records ADD COLUMN source_data_quality TEXT',
+        );
+      }
+    }
+    if (oldVersion < 6) {
+      // v6: 用户确认"更换里程表 / 里程新基准"标记 (P1-06)。
+      // 回拨检测到但未经确认前，统计层统一按断点隔断。
+      final refuelCols = await db.rawQuery('PRAGMA table_info(refuel_records)');
+      final names = refuelCols.map((c) => c['name'] as String).toSet();
+      if (!names.contains('is_odometer_reset')) {
+        await db.execute(
+          'ALTER TABLE refuel_records ADD COLUMN '
+          'is_odometer_reset INTEGER NOT NULL DEFAULT 0',
+        );
+      }
     }
   }
 
@@ -777,6 +933,7 @@ class DatabaseHelper {
           for (final row in rows) {
             existingKeys.add(
               _refuelDuplicateKey(
+                vehicleId,
                 row['refuel_date'] as String?,
                 (row['mileage'] as num?)?.toDouble(),
               ),
@@ -786,24 +943,50 @@ class DatabaseHelper {
 
         final batch = txn.batch();
         final seenInBatch = <String>{};
+        final skipReasons = <String, int>{};
+        final byVehicle = <String, VehicleImportCount>{};
         var inserted = 0;
         var skipped = 0;
+
+        void count(String vehicleId, {int add = 0, int skip = 0}) {
+          byVehicle[vehicleId] =
+              (byVehicle[vehicleId] ?? const VehicleImportCount()).copyWith(
+                inserted: (byVehicle[vehicleId]?.inserted ?? 0) + add,
+                skipped: (byVehicle[vehicleId]?.skipped ?? 0) + skip,
+              );
+        }
+
+        void tally(String reason) {
+          skipReasons[reason] = (skipReasons[reason] ?? 0) + 1;
+        }
+
         for (final r in records) {
           final key = _refuelDuplicateKey(
+            r.vehicleId,
             r.refuelDate.toIso8601String(),
             r.mileage,
           );
           if (existingKeys.contains(key)) {
             skipped++;
+            tally(ImportSkipReason.duplicateInDb);
+            count(r.vehicleId, skip: 1);
           } else if (!seenInBatch.add(key)) {
             skipped++;
+            tally(ImportSkipReason.duplicateInBatch);
+            count(r.vehicleId, skip: 1);
           } else {
             batch.insert('refuel_records', r.toMap());
             inserted++;
+            count(r.vehicleId, add: 1);
           }
         }
         await batch.commit(noResult: true);
-        return BatchImportStats(inserted: inserted, skippedDuplicates: skipped);
+        return BatchImportStats(
+          inserted: inserted,
+          skippedDuplicates: skipped,
+          skipReasons: Map.unmodifiable(skipReasons),
+          byVehicle: Map.unmodifiable(byVehicle),
+        );
       });
       AppConfig.log(
         '批量插入完成：新增 ${stats.inserted} 条，跳过重复 ${stats.skippedDuplicates} 条',
@@ -815,20 +998,47 @@ class DatabaseHelper {
     }
   }
 
-  /// 重复记录判别指纹：车辆由查询条件保证，此处按分钟精度的日期 + 里程
-  static String _refuelDuplicateKey(String? isoDate, double? mileage) {
+  /// 重复记录判别指纹：车辆 + 分钟精度日期 + 里程。
+  ///
+  /// 车辆必须参与指纹。否则两辆车在同一分钟记录了相同表显里程时，
+  /// 后一辆会被前一辆的指纹误判为重复而静默丢弃。
+  static String _refuelDuplicateKey(
+    String vehicleId,
+    String? isoDate,
+    double? mileage,
+  ) {
     final datePart = (isoDate != null && isoDate.length >= 16)
         ? isoDate.substring(0, 16)
         : (isoDate ?? '');
     final mileagePart = mileage == null ? '' : mileage.toStringAsFixed(1);
-    return '$datePart|$mileagePart';
+    return '$vehicleId|$datePart|$mileagePart';
   }
 
   /// 在一个事务中覆盖指定车辆的加油记录，失败时保留原数据。
+  ///
+  /// 覆盖前必须校验全部记录都归属目标车辆。此前实现先清空目标车辆
+  /// 再原样插入，若导入数据携带了错误的 vehicleId，会造成当前车辆
+  /// 数据丢失或记录串到其他车辆。
   Future<void> replaceVehicleRefuelRecords(
     String vehicleId,
     List<RefuelRecordModel> records,
   ) async {
+    final mismatched = records
+        .where((r) => r.vehicleId != vehicleId)
+        .map((r) => r.id)
+        .toList();
+    if (mismatched.isNotEmpty) {
+      final preview = mismatched.take(5).join(', ');
+      final more = mismatched.length > 5 ? ' 等 ${mismatched.length} 条' : '';
+      AppConfig.log(
+        '覆盖导入已拒绝：${mismatched.length} 条记录不属于车辆 $vehicleId（$preview$more）',
+      );
+      throw ArgumentError(
+        '覆盖导入已拒绝：${mismatched.length} 条记录不属于目标车辆，'
+        '为避免数据丢失未执行任何删除。',
+      );
+    }
+
     final db = await database;
     await db.transaction((txn) async {
       await txn.delete(
@@ -884,26 +1094,47 @@ class DatabaseHelper {
     }
   }
 
-  /// 批量更新加油记录计算结果（用于重新计算后回写油耗）
+  /// 批量更新加油记录计算结果（用于重新计算后回写油耗）。
+  ///
+  /// 回写条件同时包含原始事实字段，形成轻量乐观锁：旧的异步加载结果
+  /// 即使晚于用户编辑或新一轮加载完成，也不能覆盖新的派生值。
   Future<void> batchUpdateRefuelCalculations(
     List<RefuelRecordModel> records,
   ) async {
     try {
       final db = await database;
-      final batch = db.batch();
-      for (final r in records) {
-        batch.update(
-          'refuel_records',
-          {
-            'fuel_consumption': r.fuelConsumption,
-            'cost_per_km': r.costPerKm,
-            'distance': r.distance,
-          },
-          where: 'id = ?',
-          whereArgs: [r.id],
-        );
-      }
-      await batch.commit(noResult: true);
+      await db.transaction((txn) async {
+        for (final r in records) {
+          if (r.hasInvalidDate) continue;
+          final count = await txn.update(
+            'refuel_records',
+            {
+              'fuel_consumption': r.fuelConsumption,
+              'cost_per_km': r.costPerKm,
+              'distance': r.distance,
+            },
+            where: '''id = ? AND vehicle_id = ? AND refuel_date = ?
+                AND mileage = ? AND fuel_amount = ? AND unit_price = ?
+                AND total_price = ? AND is_full_tank = ?
+                AND is_forgot_previous = ? AND is_odometer_reset = ?''',
+            whereArgs: [
+              r.id,
+              r.vehicleId,
+              r.refuelDate.toIso8601String(),
+              r.mileage,
+              r.fuelAmount,
+              r.unitPrice,
+              r.totalPrice,
+              r.isFullTank ? 1 : 0,
+              r.isForgotPrevious ? 1 : 0,
+              r.isOdometerReset ? 1 : 0,
+            ],
+          );
+          if (count != 1) {
+            throw StateError('派生值回写已失效：原始账本在计算期间发生变化（${r.id}）');
+          }
+        }
+      });
     } catch (e) {
       AppConfig.log('批量更新加油计算失败: $e');
       rethrow;
@@ -1025,6 +1256,8 @@ class DatabaseHelper {
     return join(dbPath, AppConfig.databaseName);
   }
 
+  static const int backupSchemaVersion = 6;
+
   /// 导出全库数据为标准化 JSON 备份字典
   Future<Map<String, dynamic>> exportFullBackupData() async {
     final db = await database;
@@ -1041,6 +1274,7 @@ class DatabaseHelper {
     return {
       'app': 'BearFuel',
       'version': AppConfig.versionName,
+      'schema_version': backupSchemaVersion,
       'export_time': DateTime.now().toIso8601String(),
       'vehicles': rows[0],
       'refuel_records': rows[1],
@@ -1049,8 +1283,101 @@ class DatabaseHelper {
     };
   }
 
+  /// 备份金额容差：固定 0.05 元与 0.5% 取大者。
+  ///
+  /// 覆盖两位小数舍入、加油站让零和常见手续费，不做静默修正。
+  static double _amountTolerance(double expected) {
+    final scaled = expected.abs() * 0.005;
+    return scaled > 0.05 ? scaled : 0.05;
+  }
+
+  /// 检查备份中加油记录的金额关系是否自洽（纯函数，不触碰数据库）。
+  ///
+  /// 校验两条关系：
+  /// - 机显金额(= 实付 + 优惠) ≈ 加油量 × 单价
+  /// - 实付 ≤ 机显金额，且 0 ≤ 优惠 ≤ 机显金额
+  ///
+  /// 缺少优惠金额时无法推算机显金额，量价关系记为"无法核验"而非不一致，
+  /// 避免把未登记优惠的正常记录误判为矛盾数据。
+  ///
+  /// P1-09 附注的第三条关系（实付 ≈ 机显金额 - discountAmount）在当前
+  /// 备份 schema 下是恒等式：机显金额未独立存储，discount 在导入时即按
+  /// "机显 - 实付"推导，故该约束已由上方第一条量价校验覆盖。若未来
+  /// 模型增加独立的机显金额字段（如 displayTotalPrice），须在此补独立校验。
+  static BackupConsistencyReport inspectRefuelAmountConsistency(
+    List<dynamic> rows,
+  ) {
+    final issues = <BackupAmountIssue>[];
+    var unverifiable = 0;
+
+    for (final raw in rows) {
+      if (raw is! Map) continue;
+      final row = Map<String, dynamic>.from(raw);
+      final id = row['id']?.toString() ?? '<无 id>';
+
+      num? num_(dynamic v) => v is num && v.isFinite ? v : null;
+      final fuelAmount = num_(row['fuel_amount']);
+      final unitPrice = num_(row['unit_price']);
+      final totalPrice = num_(row['total_price']);
+      final discount = num_(row['discount_amount']);
+
+      if (fuelAmount == null ||
+          unitPrice == null ||
+          totalPrice == null ||
+          fuelAmount <= 0 ||
+          unitPrice <= 0 ||
+          totalPrice <= 0) {
+        continue; // 结构性非法由恢复前的字段校验拦截，此处不重复判定
+      }
+
+      if (discount == null) {
+        unverifiable++;
+        continue;
+      }
+
+      if (discount < 0) {
+        issues.add(
+          BackupAmountIssue(
+            recordId: id,
+            kind: BackupAmountIssueKind.negativeDiscount,
+            actual: discount.toDouble(),
+            expected: 0,
+          ),
+        );
+        continue;
+      }
+
+      // 机显金额 = 实付 + 优惠。实付恒为非负，故只需单独拦截负优惠。
+      final displayTotal = totalPrice + discount;
+      final expected = fuelAmount * unitPrice;
+      final delta = (displayTotal - expected).abs();
+      if (delta > _amountTolerance(expected.toDouble())) {
+        issues.add(
+          BackupAmountIssue(
+            recordId: id,
+            kind: BackupAmountIssueKind.quantityPriceMismatch,
+            actual: displayTotal.toDouble(),
+            expected: expected.toDouble(),
+          ),
+        );
+      }
+    }
+
+    return BackupConsistencyReport(
+      issues: issues,
+      unverifiableCount: unverifiable,
+    );
+  }
+
   /// 从 JSON 备份全量恢复数据（采用单事务安全替换）
-  Future<bool> restoreFullBackupData(Map<String, dynamic> backupData) async {
+  ///
+  /// [allowAmountInconsistency] 为 false（默认）时，金额关系矛盾的备份
+  /// 会被整体拒绝；为 true 时照常恢复，但问题记录会记入日志供用户核对。
+  /// 两种情况都不会静默修正金额。
+  Future<BackupRestoreResult> restoreFullBackupData(
+    Map<String, dynamic> backupData, {
+    bool allowAmountInconsistency = false,
+  }) async {
     bool text(dynamic value) => value is String && value.trim().isNotEmpty;
     bool date(dynamic value) =>
         value is String && DateTime.tryParse(value) != null;
@@ -1084,10 +1411,22 @@ class DatabaseHelper {
       return true;
     }
 
+    final schemaVersion = backupData['schema_version'];
+    if (schemaVersion != null &&
+        (schemaVersion is! int ||
+            schemaVersion < 1 ||
+            schemaVersion > backupSchemaVersion)) {
+      return const BackupRestoreResult(
+        success: false,
+        message: '备份数据库版本不受当前版本支持，已拒绝恢复。',
+      );
+    }
+
     final vehicleIds = <String>{};
     final refuelIds = <String>{};
     final expenseIds = <String>{};
     final weatherIds = <String>{};
+    final weatherKeys = <String>{};
     bool validVehicle(Map<String, dynamic> row) {
       final id = row['id'];
       if (!text(id) || !text(row['name']) || !date(row['created_at'])) {
@@ -1118,15 +1457,26 @@ class DatabaseHelper {
           text(row['fuel_type']) &&
           flag(row['is_full_tank']) &&
           flag(row['is_forgot_previous']) &&
+          (row['is_odometer_reset'] == null ||
+              flag(row['is_odometer_reset'])) &&
           date(row['created_at']) &&
           (row['fuel_consumption'] == null ||
               number(row['fuel_consumption'], positive: true)) &&
           (row['cost_per_km'] == null ||
               number(row['cost_per_km'], positive: true)) &&
           (row['distance'] == null ||
-              number(row['distance'], positive: true)) &&
+              number(row['distance'], positive: false)) &&
           (row['discount_amount'] == null ||
               number(row['discount_amount'], positive: false)) &&
+          (row['source_fuel_consumption'] == null ||
+              number(row['source_fuel_consumption'], positive: true)) &&
+          (row['source_data_quality'] == null ||
+              const {
+                'reported',
+                'estimated',
+                'unavailable',
+              }.contains(row['source_data_quality'])) &&
+          (row['gas_station'] == null || row['gas_station'] is String) &&
           (row['fuel_warning_light'] == null ||
               flag(row['fuel_warning_light']));
     }
@@ -1154,6 +1504,8 @@ class DatabaseHelper {
       if (!text(row['id']) || !weatherIds.add(row['id'] as String)) {
         return false;
       }
+      final weatherKey = '${row['city_key']}|${row['snapshot_date']}';
+      if (!weatherKeys.add(weatherKey)) return false;
       return text(row['city_key']) &&
           text(row['city_name']) &&
           date(row['snapshot_date']) &&
@@ -1177,7 +1529,31 @@ class DatabaseHelper {
             validRows(backupData['weather_snapshots'], validWeather));
     if (!isValid) {
       AppConfig.log('全量数据恢复已拒绝：备份格式无效或不包含车辆数据');
-      return false;
+      return const BackupRestoreResult(
+        success: false,
+        message: '备份格式无效或不包含车辆数据，已拒绝恢复。',
+      );
+    }
+
+    // 金额关系软校验：量价与优惠必须自洽，矛盾数据默认不得入库。
+    final consistency = inspectRefuelAmountConsistency(
+      (backupData['refuel_records'] as List<dynamic>?) ?? const [],
+    );
+    if (!consistency.isClean) {
+      final detail = consistency.summary();
+      if (!allowAmountInconsistency) {
+        AppConfig.log('全量数据恢复已拒绝：金额关系不自洽\n$detail');
+        return BackupRestoreResult(
+          success: false,
+          message:
+              '备份中有 ${consistency.issues.length} 条记录的金额关系不自洽，'
+              '已拒绝恢复。\n$detail',
+          consistency: consistency,
+        );
+      }
+      AppConfig.log(
+        '全量数据恢复：已按用户确认放行 ${consistency.issues.length} 条金额待核对记录\n$detail',
+      );
     }
 
     try {
@@ -1256,10 +1632,14 @@ class DatabaseHelper {
         }
       });
       AppConfig.log('全量数据恢复成功！');
-      return true;
+      return BackupRestoreResult(success: true, consistency: consistency);
     } catch (e) {
       AppConfig.log('全量数据恢复失败: $e');
-      return false;
+      return BackupRestoreResult(
+        success: false,
+        message: '恢复过程中写入失败：$e',
+        consistency: consistency,
+      );
     }
   }
 }

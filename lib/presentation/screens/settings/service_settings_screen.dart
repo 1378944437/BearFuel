@@ -101,7 +101,9 @@ class _ServiceSettingsScreenState extends State<ServiceSettingsScreen> {
                 : FuelPriceApiConfigStore.hasApiKey
                 ? '数据源：ApiZero（个人 Key 已配置）'
                 : '数据源：ApiZero（匿名模式，可选配置个人 Key）',
-            configured: FuelPriceSourceStore.useXxyh || FuelPriceApiConfigStore.hasApiKey,
+            configured:
+                FuelPriceSourceStore.useXxyh ||
+                FuelPriceApiConfigStore.hasApiKey,
             optional: true,
             onTap: () => Navigator.push(
               context,

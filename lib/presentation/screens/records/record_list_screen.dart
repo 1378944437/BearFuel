@@ -13,6 +13,7 @@ import '../../../data/models/audit_finding_model.dart';
 import '../../../providers/expense_provider.dart';
 import '../../../providers/vehicle_provider.dart';
 import '../../../presentation/widgets/empty_state_view.dart';
+import '../../../presentation/widgets/swipe_action_card.dart';
 import '../../../presentation/widgets/compact_date_range_dialog.dart';
 import '../../../presentation/widgets/app_page_title.dart';
 import '../refuel/add_refuel_screen.dart';
@@ -35,8 +36,7 @@ class _RecordListScreenState extends State<RecordListScreen>
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  final _RefuelSwipeController _refuelSwipeController =
-      _RefuelSwipeController();
+  final SwipeActionController _refuelSwipeController = SwipeActionController();
   String _searchQuery = '';
   bool _hasSeenSwipeHint = true; // 默认为 true，待异步加载
   bool _showBackToTop = false;
@@ -801,7 +801,7 @@ class _RefuelRecordListView extends StatelessWidget {
   final VoidCallback onOpenTimeModal;
   final VoidCallback onResetAllFilters;
   final ScrollController scrollController;
-  final _RefuelSwipeController swipeController;
+  final SwipeActionController swipeController;
   final DateTimeRange? customDateRange;
 
   const _RefuelRecordListView({
@@ -874,12 +874,9 @@ class _RefuelRecordListView extends StatelessWidget {
         final end = DateTime(
           customDateRange!.end.year,
           customDateRange!.end.month,
-          customDateRange!.end.day,
-          23,
-          59,
-          59,
+          customDateRange!.end.day + 1,
         );
-        return !r.refuelDate.isBefore(start) && !r.refuelDate.isAfter(end);
+        return !r.refuelDate.isBefore(start) && r.refuelDate.isBefore(end);
       }
       final age = now.difference(r.refuelDate);
       // 仅相对时间范围（近1天/近1周...）排除未来记录，"全部时间"应显示补录
@@ -1458,36 +1455,10 @@ Future<bool?> _showDeleteConfirmDialog(
   );
 }
 
-/// 账本左滑卡片协调器：同一时间只允许一张卡片处于滑开状态，
-/// 并支持在滚动开始或点击其他区域时统一收起。
-class _RefuelSwipeController {
-  _SlidableRefuelItemCardState? _openCard;
-
-  /// 请求滑开 [card]，同时收起当前已滑开的其他卡片
-  void opened(_SlidableRefuelItemCardState card) {
-    if (_openCard == card) return;
-    _openCard?._collapse();
-    _openCard = card;
-  }
-
-  /// 通知 [card] 已收起，解除登记
-  void closed(_SlidableRefuelItemCardState card) {
-    if (_openCard == card) {
-      _openCard = null;
-    }
-  }
-
-  /// 收起当前滑开的卡片（如滚动开始时）
-  void close() {
-    _openCard?._collapse();
-    _openCard = null;
-  }
-}
-
 class _SlidableRefuelItemCard extends StatefulWidget {
   final RefuelRecordModel record;
   final double globalAvgConsumption;
-  final _RefuelSwipeController swipeController;
+  final SwipeActionController swipeController;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
   final VoidCallback? onOperated;
@@ -1506,54 +1477,8 @@ class _SlidableRefuelItemCard extends StatefulWidget {
       _SlidableRefuelItemCardState();
 }
 
-class _SlidableRefuelItemCardState extends State<_SlidableRefuelItemCard>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _animation;
-  double _dragOffset = 0.0;
-  static const double _actionWidth = 140.0; // 编辑70 + 删除70
-
-  _RefuelSwipeController get swipeController => widget.swipeController;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 200),
-    );
-    _animation = Tween<double>(begin: 0.0, end: 0.0).animate(_controller);
-    _controller.addListener(() {
-      if (mounted) setState(() => _dragOffset = _animation.value);
-    });
-  }
-
-  @override
-  void dispose() {
-    swipeController.closed(this);
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _animateTo(double target) {
-    _animation = Tween<double>(
-      begin: _dragOffset,
-      end: target,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic));
-    _controller.forward(from: 0.0);
-  }
-
-  void _resetPosition() {
-    _animateTo(0.0);
-  }
-
-  /// 收起卡片（供滑动协调器调用），仅当已滑开时才执行动画
-  void _collapse() {
-    if (!mounted) return;
-    if (_dragOffset != 0) {
-      _resetPosition();
-    }
-  }
+class _SlidableRefuelItemCardState extends State<_SlidableRefuelItemCard> {
+  SwipeActionController get swipeController => widget.swipeController;
 
   @override
   Widget build(BuildContext context) {
@@ -1588,406 +1513,304 @@ class _SlidableRefuelItemCardState extends State<_SlidableRefuelItemCard>
         ],
       ),
       clipBehavior: Clip.antiAlias,
-      child: Stack(
-        children: [
-          // 1. 底层右侧操作抽屉（左滑显示编辑与删除）
-          Positioned.fill(
-            child: Container(
-              alignment: Alignment.centerRight,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  InkWell(
-                    onTap: () {
-                      swipeController.closed(this);
-                      _resetPosition();
-                      widget.onEdit();
-                    },
-                    child: Container(
-                      width: 70,
-                      color: const Color(0xFF1E88E5),
-                      alignment: Alignment.center,
-                      child: const Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            AppIcons.edit_outlined,
-                            color: Colors.white,
-                            size: 22,
-                          ),
-                          SizedBox(height: 2),
-                          Text(
-                            '编辑',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  InkWell(
-                    onTap: () {
-                      swipeController.closed(this);
-                      _resetPosition();
-                      widget.onOperated?.call();
-                      widget.onDelete();
-                    },
-                    child: Container(
-                      width: 70,
-                      color: Colors.redAccent,
-                      alignment: Alignment.center,
-                      child: const Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            AppIcons.delete_outline,
-                            color: Colors.white,
-                            size: 22,
-                          ),
-                          SizedBox(height: 2),
-                          Text(
-                            '删除',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+      child: SwipeActionCard(
+        controller: widget.swipeController,
+        onOperated: widget.onOperated,
+        onEdit: () => widget.onEdit(),
+        onDelete: () {
+          widget.onOperated?.call();
+          widget.onDelete();
+        },
+        onTap: () {
+          _showRefuelDetailSheet(context, r, widget.globalAvgConsumption);
+        },
+        child: Card(
+          margin: EdgeInsets.zero,
+          elevation: 0,
+          shape: const RoundedRectangleBorder(
+            // 右侧直角：滑动时与抽屉保持平直拼缝，整体圆角由外层容器裁剪
+            borderRadius: BorderRadius.horizontal(left: Radius.circular(12)),
           ),
-
-          // 2. 表层主卡片（仅允许向左拖拽；滑开后仍可点击/右滑收回）
-          //   Transform 必须在 GestureDetector 外层：命中区域才会跟随卡片平移，
-          //   否则未平移的整行命中框会吞掉右侧"编辑/删除"按钮的点击。
-          Transform.translate(
-            offset: Offset(_dragOffset, 0),
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onHorizontalDragUpdate: (details) {
-                setState(() {
-                  _dragOffset += details.primaryDelta!;
-                  // 仅允许左滑（负偏移），禁止右滑（最大为 0.0）
-                  _dragOffset = _dragOffset.clamp(-_actionWidth, 0.0);
-                });
-              },
-              onHorizontalDragEnd: (details) {
-                if (_dragOffset < -45) {
-                  // 左滑超过阈值：露出右侧编辑与删除抽屉，并收起其他已滑开的卡片
-                  HapticFeedback.lightImpact();
-                  widget.onOperated?.call();
-                  swipeController.opened(this);
-                  _animateTo(-_actionWidth);
-                } else {
-                  swipeController.closed(this);
-                  _resetPosition();
-                }
-              },
-              onTap: () {
-                if (_dragOffset != 0) {
-                  // 已滑开时点击卡片任意位置收回
-                  swipeController.closed(this);
-                  _resetPosition();
-                } else {
-                  _showRefuelDetailSheet(
-                    context,
-                    r,
-                    widget.globalAvgConsumption,
-                  );
-                }
-              },
-              child: Card(
-                margin: EdgeInsets.zero,
-                elevation: 0,
-                shape: const RoundedRectangleBorder(
-                  // 右侧直角：滑动时与抽屉保持平直拼缝，整体圆角由外层容器裁剪
-                  borderRadius: BorderRadius.horizontal(
-                    left: Radius.circular(12),
-                  ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(12.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+          child: Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(
+                          AppIcons.local_gas_station,
+                          color: Color(0xFFFF5A24),
+                          size: 18,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          DateFormatter.formatYmdHm(r.refuelDate),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                        if (r.fuelWarningLightOn == true) ...[
+                          const SizedBox(width: 4),
+                          const Tooltip(
+                            message: '加油时油量警告灯已点亮',
+                            child: Icon(
+                              AppIcons.warning_amber_rounded,
+                              size: 14,
+                              color: Colors.orange,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    if (hasConsumption)
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Row(
-                            children: [
-                              const Icon(
-                                AppIcons.local_gas_station,
+                          if (isAnomaly) ...[
+                            const Tooltip(
+                              message: '此笔油耗偏离平均值较多，可能存在漏记里程或升数偏差',
+                              child: Icon(
+                                AppIcons.warning_amber_rounded,
+                                color: Colors.orange,
+                                size: 16,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                          ],
+                          if (isEconomy)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 5,
+                                vertical: 1,
+                              ),
+                              margin: const EdgeInsets.only(right: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                              child: Text(
+                                '节省 ${((widget.globalAvgConsumption - r.fuelConsumption!).abs()).toStringAsFixed(1)}L',
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.green,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            )
+                          else if (isHigher)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 5,
+                                vertical: 1,
+                              ),
+                              margin: const EdgeInsets.only(right: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                              child: Text(
+                                '偏高 ${((r.fuelConsumption! - widget.globalAvgConsumption).abs()).toStringAsFixed(1)}L',
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.orange,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(
+                                0xFFFF5A24,
+                              ).withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              '${r.fuelConsumption!.toStringAsFixed(2)} L/100km',
+                              style: const TextStyle(
                                 color: Color(0xFFFF5A24),
-                                size: 18,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                DateFormatter.formatYmdHm(r.refuelDate),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13,
-                                ),
-                              ),
-                              if (r.fuelWarningLightOn == true) ...[
-                                const SizedBox(width: 4),
-                                const Tooltip(
-                                  message: '加油时油量警告灯已点亮',
-                                  child: Icon(
-                                    AppIcons.warning_amber_rounded,
-                                    size: 14,
-                                    color: Colors.orange,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                          if (hasConsumption)
-                            Row(
-                              children: [
-                                if (isAnomaly) ...[
-                                  const Tooltip(
-                                    message: '此笔油耗偏离平均值较多，可能存在漏记里程或升数偏差',
-                                    child: Icon(
-                                      AppIcons.warning_amber_rounded,
-                                      color: Colors.orange,
-                                      size: 16,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                ],
-                                if (isEconomy)
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 5,
-                                      vertical: 1,
-                                    ),
-                                    margin: const EdgeInsets.only(right: 4),
-                                    decoration: BoxDecoration(
-                                      color: Colors.green.withValues(
-                                        alpha: 0.12,
-                                      ),
-                                      borderRadius: BorderRadius.circular(3),
-                                    ),
-                                    child: Text(
-                                      '节省 ${((widget.globalAvgConsumption - r.fuelConsumption!).abs()).toStringAsFixed(1)}L',
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        color: Colors.green,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  )
-                                else if (isHigher)
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 5,
-                                      vertical: 1,
-                                    ),
-                                    margin: const EdgeInsets.only(right: 4),
-                                    decoration: BoxDecoration(
-                                      color: Colors.orange.withValues(
-                                        alpha: 0.12,
-                                      ),
-                                      borderRadius: BorderRadius.circular(3),
-                                    ),
-                                    child: Text(
-                                      '偏高 ${((r.fuelConsumption! - widget.globalAvgConsumption).abs()).toStringAsFixed(1)}L',
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        color: Colors.orange,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                    vertical: 2,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: const Color(
-                                      0xFFFF5A24,
-                                    ).withValues(alpha: 0.12),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    '${r.fuelConsumption!.toStringAsFixed(2)} L/100km',
-                                    style: const TextStyle(
-                                      color: Color(0xFFFF5A24),
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            )
-                          else if (!r.isFullTank)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.grey.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                '未加满 (累计平摊)',
-                                style: TextStyle(
-                                  color: colors.onSurfaceVariant,
-                                  fontSize: 11,
-                                ),
-                              ),
-                            )
-                          else if (r.isForgotPrevious)
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.blue.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: const Text(
-                                '漏记前次 (新基准)',
-                                style: TextStyle(
-                                  color: Colors.blue,
-                                  fontSize: 11,
-                                ),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
                               ),
                             ),
+                          ),
                         ],
+                      )
+                    else if (!r.isFullTank)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          '未加满 (累计平摊)',
+                          style: TextStyle(
+                            color: colors.onSurfaceVariant,
+                            fontSize: 11,
+                          ),
+                        ),
+                      )
+                    else if (r.isForgotPrevious)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          '漏记前次 (新基准)',
+                          style: TextStyle(color: Colors.blue, fontSize: 11),
+                        ),
+                      )
+                    else if (r.isOdometerReset)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.teal.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          '换表 (新基准)',
+                          style: TextStyle(color: Colors.teal, fontSize: 11),
+                        ),
                       ),
-                      const SizedBox(height: 8),
-                      Row(
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '¥${r.totalPrice.toStringAsFixed(2)}',
-                                  style: const TextStyle(
-                                    fontSize: 17,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFFFF5A24),
-                                  ),
-                                ),
-                                if (r.discountAmount != null &&
-                                    r.discountAmount! > 0) ...[
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    '已优惠 ¥${r.discountAmount!.toStringAsFixed(2)}（机显 ¥${(r.fuelAmount * r.unitPrice).toStringAsFixed(2)}）',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      color: Colors.green[700],
-                                    ),
-                                  ),
-                                ],
-                                const SizedBox(height: 2),
-                                Text(
-                                  '${r.fuelAmount.toStringAsFixed(2)}升 @ ¥${r.unitPrice.toStringAsFixed(2)}/升 (${r.fuelType})',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: colors.onSurfaceVariant,
-                                  ),
-                                ),
-                              ],
+                          Text(
+                            '¥${r.totalPrice.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFFFF5A24),
                             ),
                           ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                '${r.mileage.toStringAsFixed(2)} km',
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                          if (r.discountAmount != null &&
+                              r.discountAmount! > 0) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              '已优惠 ¥${r.discountAmount!.toStringAsFixed(2)}（机显 ¥${(r.fuelAmount * r.unitPrice).toStringAsFixed(2)}）',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.green[700],
                               ),
-                              if (r.distance != null)
-                                Text(
-                                  '行驶 +${r.distance!.toStringAsFixed(2)} km',
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.green,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              if (r.costPerKm != null)
-                                Text(
-                                  '¥${r.costPerKm!.toStringAsFixed(2)}/km',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: colors.onSurfaceVariant,
-                                  ),
-                                ),
-                            ],
+                            ),
+                          ],
+                          const SizedBox(height: 2),
+                          Text(
+                            '${r.fuelAmount.toStringAsFixed(2)}升 @ ¥${r.unitPrice.toStringAsFixed(2)}/升 (${r.fuelType})',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: colors.onSurfaceVariant,
+                            ),
                           ),
                         ],
                       ),
-                      if (r.gasStation != null && r.gasStation!.isNotEmpty) ...[
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            Icon(
-                              AppIcons.location_on_outlined,
-                              size: 14,
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          '${r.mileage.toStringAsFixed(2)} km',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        if (r.distance != null)
+                          Text(
+                            '行驶 +${r.distance!.toStringAsFixed(2)} km',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Colors.green,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        if (r.costPerKm != null)
+                          Text(
+                            '¥${r.costPerKm!.toStringAsFixed(2)}/km',
+                            style: TextStyle(
+                              fontSize: 11,
                               color: colors.onSurfaceVariant,
                             ),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                r.gasStation!,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: colors.onSurface,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
+                          ),
                       ],
-                      if (r.note != null && r.note!.isNotEmpty) ...[
-                        const SizedBox(height: 2),
-                        Row(
-                          children: [
-                            Icon(
-                              AppIcons.edit_note,
-                              size: 14,
-                              color: colors.onSurfaceVariant,
-                            ),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                r.note!,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: colors.onSurfaceVariant,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
+                    ),
+                  ],
+                ),
+                if (r.gasStation != null && r.gasStation!.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Icon(
+                        AppIcons.location_on_outlined,
+                        size: 14,
+                        color: colors.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          r.gasStation!,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colors.onSurface,
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      ],
+                      ),
                     ],
                   ),
-                ),
-              ),
+                ],
+                if (r.note != null && r.note!.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      Icon(
+                        AppIcons.edit_note,
+                        size: 14,
+                        color: colors.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          r.note!,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: colors.onSurfaceVariant,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }

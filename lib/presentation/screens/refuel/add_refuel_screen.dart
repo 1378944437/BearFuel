@@ -46,6 +46,7 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
   late String _selectedFuelType;
   late bool _isFullTank;
   late bool _isForgotPrevious;
+  late bool _isOdometerReset; // 用户确认更换里程表/新基准 (P1-06)
   bool? _fuelWarningLightOn; // null = 未记录
 
   bool _isAutoCalculating = false;
@@ -97,6 +98,7 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
             FuelType.gas92);
     _isFullTank = edit?.isFullTank ?? true;
     _isForgotPrevious = edit?.isForgotPrevious ?? false;
+    _isOdometerReset = edit?.isOdometerReset ?? false;
     _fuelWarningLightOn = edit?.fuelWarningLightOn;
   }
 
@@ -310,6 +312,7 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
             : _stationController.text.trim(),
         isFullTank: _isFullTank,
         isForgotPrevious: _isForgotPrevious,
+        isOdometerReset: _isOdometerReset,
         discountAmount: (discountAmount == null || discountAmount <= 0)
             ? null
             : discountAmount,
@@ -317,6 +320,8 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
         note: _noteController.text.trim().isEmpty
             ? null
             : _noteController.text.trim(),
+        sourceFuelConsumption: widget.editRecord?.sourceFuelConsumption,
+        sourceDataQuality: widget.editRecord?.sourceDataQuality,
       );
 
       final success = isEdit
@@ -885,6 +890,21 @@ class _AddRefuelScreenState extends State<AddRefuelScreen> {
               onSelect: (val) {
                 HapticFeedback.selectionClick();
                 setState(() => _isForgotPrevious = val);
+              },
+            ),
+            const SizedBox(height: 12),
+
+            // 8.5 里程表更换确认（P1-06）
+            _SegmentedQuestionCard<bool>(
+              label: '里程表是否更换过?',
+              tooltip: '换表或清零后表显会小于之前的读数。确认后，本条记录将作为新的里程基准参与计算',
+              options: const [false, true],
+              optionLabels: const ['没有', '换表了/新基准'],
+              selected: _isOdometerReset,
+              accentColor: const Color(0xFFFF5A24),
+              onSelect: (val) {
+                HapticFeedback.selectionClick();
+                setState(() => _isOdometerReset = val);
               },
             ),
             const SizedBox(height: 12),

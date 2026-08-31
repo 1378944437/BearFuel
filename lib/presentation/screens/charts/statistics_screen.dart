@@ -54,6 +54,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
   final _tenThousandCache = _MemoCache<List<TenThousandKmStats>>();
   final _priceTrendCache = _MemoCache<List<ChartDataPoint>>();
   final _tempVsConsCache = _MemoCache<List<TemperatureVsConsumptionPoint>>();
+  final _unclosedDiagCache = _MemoCache<List<UnclosedCycleDiagnostic>>();
 
   @override
   void initState() {
@@ -86,10 +87,13 @@ class _StatisticsScreenState extends State<StatisticsScreen>
 
     // 1. 根据顶部【统计周期】过滤生效的数据子集（按数据源+范围记忆化，
     //    保证下游分析缓存可以按列表引用判断是否需要重算）
+    // P2-14：签名包含当天日期，跨天后"近半年"等滚动范围缓存自动失效
+    final todayKey = DateTime.now().toIso8601String().substring(0, 10);
     final filterSignature =
         '$_selectedRange|'
         '${_customDateRange?.start.microsecondsSinceEpoch ?? 0}|'
-        '${_customDateRange?.end.microsecondsSinceEpoch ?? 0}';
+        '${_customDateRange?.end.microsecondsSinceEpoch ?? 0}|'
+        '$todayKey';
     List<RefuelRecordModel> records;
     if (identical(allRecords, _filteredRecordsSource) &&
         _filteredRecordsSig == filterSignature &&
@@ -103,21 +107,20 @@ class _StatisticsScreenState extends State<StatisticsScreen>
         } else if (_selectedRange == '今年') {
           return r.refuelDate.year == now.year;
         } else if (_selectedRange == '自定义' && _customDateRange != null) {
-          // 按日界比较：起始日 00:00 至结束日 23:59:59，避免前一日记录漏入
+          // P2-13 排他上界：起始日 00:00（含）至结束日次日 00:00（不含），
+          // 涵盖结束日最后一刻，避免 23:59:59 与微秒边界丢数据
           final start = DateTime(
             _customDateRange!.start.year,
             _customDateRange!.start.month,
             _customDateRange!.start.day,
           );
-          final end = DateTime(
+          final endExclusive = DateTime(
             _customDateRange!.end.year,
             _customDateRange!.end.month,
-            _customDateRange!.end.day,
-            23,
-            59,
-            59,
+            _customDateRange!.end.day + 1,
           );
-          return !r.refuelDate.isBefore(start) && !r.refuelDate.isAfter(end);
+          return !r.refuelDate.isBefore(start) &&
+              r.refuelDate.isBefore(endExclusive);
         }
         return true;
       }).toList();
@@ -139,20 +142,19 @@ class _StatisticsScreenState extends State<StatisticsScreen>
         } else if (_selectedRange == '今年') {
           return e.expenseDate.year == now.year;
         } else if (_selectedRange == '自定义' && _customDateRange != null) {
+          // 与加油记录过滤一致的排他上界口径
           final start = DateTime(
             _customDateRange!.start.year,
             _customDateRange!.start.month,
             _customDateRange!.start.day,
           );
-          final end = DateTime(
+          final endExclusive = DateTime(
             _customDateRange!.end.year,
             _customDateRange!.end.month,
-            _customDateRange!.end.day,
-            23,
-            59,
-            59,
+            _customDateRange!.end.day + 1,
           );
-          return !e.expenseDate.isBefore(start) && !e.expenseDate.isAfter(end);
+          return !e.expenseDate.isBefore(start) &&
+              e.expenseDate.isBefore(endExclusive);
         }
         return true;
       }).toList();
@@ -162,13 +164,15 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     }
 
     // 2. 动态实时重新计算当前选定【统计范围】内的核心四大指标
+    //
+    // 口径拆分 (P1-02)：
+    // - 交易口径：加油笔数、加油量、实付金额，按范围过滤后的记录求和；
+    // - 完整周期口径：里程、平均油耗、每公里成本，周期建立在**全量记录**上，
+    //   只有完整包含在范围内的可信周期才参与，边界相交周期仅计数提示。
     final double rangeFuelCost = records.fold(
       0.0,
       (sum, r) => sum + r.totalPrice,
     );
-    // 累计行驶里程按相邻里程差累加：漏记/未加满区间的真实行驶不丢失，
-    // 未加满记录也不会与其下一周期重复计算
-    final double rangeDistance = sumConsecutiveMileage(records);
     final double rangeFuelAmount = records.fold(
       0.0,
       (sum, r) => sum + r.fuelAmount,
@@ -178,39 +182,53 @@ class _StatisticsScreenState extends State<StatisticsScreen>
       (sum, e) => sum + e.amount,
     );
 
-    final validRecords = records.where(
-      (r) =>
-          r.fuelConsumption != null &&
-          r.fuelConsumption! > 0 &&
-          r.distance != null &&
-          r.distance! > 0,
+    DateTime? rangeStart;
+    DateTime? rangeEndExclusive;
+    if (_selectedRange == '近半年') {
+      rangeStart = now.subtract(const Duration(days: 183));
+      rangeEndExclusive = DateTime(now.year, now.month, now.day + 1);
+    } else if (_selectedRange == '今年') {
+      rangeStart = DateTime(now.year, 1, 1);
+      rangeEndExclusive = DateTime(now.year + 1, 1, 1);
+    } else if (_selectedRange == '自定义' && _customDateRange != null) {
+      rangeStart = DateTime(
+        _customDateRange!.start.year,
+        _customDateRange!.start.month,
+        _customDateRange!.start.day,
+      );
+      // 排他上界：结束日的次日 00:00，涵盖结束日最后一刻
+      rangeEndExclusive = DateTime(
+        _customDateRange!.end.year,
+        _customDateRange!.end.month,
+        _customDateRange!.end.day + 1,
+      );
+    }
+    final rangeCycleStats = StatisticsService.getRangeCycleStats(
+      allRecords: allRecords,
+      startInclusive: rangeStart,
+      endExclusive: rangeEndExclusive,
     );
-    final validDistance = validRecords.fold(0.0, (sum, r) => sum + r.distance!);
-    final validFuel = validRecords.fold(
-      0.0,
-      (sum, r) => sum + (r.fuelConsumption! * r.distance!) / 100.0,
-    );
-    final validCost = validRecords.fold(
-      0.0,
-      (sum, r) => sum + (r.costPerKm ?? 0.0) * r.distance!,
-    );
+
+    // P2-09：未闭合加油记录诊断（建立在全量记录上，与所选范围无关）
+    final unclosedDiagnostics = _unclosedDiagCache.get([
+      allRecords,
+    ], () => StatisticsService.getUnclosedCycleDiagnostics(allRecords));
+
     // 所选范围无完成周期时回退为全历史平均，界面需明确标注避免误读
     final bool isFallbackAverage =
-        validDistance <= 0 &&
+        !rangeCycleStats.hasCycles &&
         records.isNotEmpty &&
         refuelProv.summary.averageConsumption > 0;
-    final double rangeAvgConsumption = validDistance > 0
-        ? (validFuel / validDistance) * 100.0
-        : (isFallbackAverage ? refuelProv.summary.averageConsumption : 0.0);
-    final double rangeCostPerKm = validDistance > 0
-        ? validCost / validDistance
-        : 0.0;
+    final double rangeAvgConsumption =
+        rangeCycleStats.avgConsumption ??
+        (isFallbackAverage ? refuelProv.summary.averageConsumption : 0.0);
+    final double rangeCostPerKm = rangeCycleStats.costPerKm ?? 0.0;
 
     final dynamicRangeSummary = FuelCalculationSummary(
       averageConsumption: rangeAvgConsumption,
       averageCostPerKm: rangeCostPerKm,
       totalFuelCost: rangeFuelCost,
-      totalValidDistance: rangeDistance,
+      totalValidDistance: rangeCycleStats.distance,
       totalFuelAmount: rangeFuelAmount,
     );
 
@@ -412,16 +430,20 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                     _buildOverviewTab(
                       context,
                       records,
+                      allRecords,
                       expenses,
                       dynamicRangeSummary,
                       rangeOtherCost,
                       isFallbackAverage,
+                      rangeCycleStats,
+                      unclosedDiagnostics,
                     ),
 
                     // 2. 油耗进阶分析看板
                     _buildAdvancedFuelTab(
                       context,
                       records,
+                      allRecords,
                       rangeAvgConsumption,
                       isFallbackAverage,
                     ),
@@ -451,11 +473,15 @@ class _StatisticsScreenState extends State<StatisticsScreen>
   Widget _buildOverviewTab(
     BuildContext context,
     List<RefuelRecordModel> records,
+    List<RefuelRecordModel> allRecords,
     List<ExpenseRecordModel> expenses,
     FuelCalculationSummary summary,
     double totalOtherExpense,
     bool isFallbackAverage,
+    RangeCycleStats rangeCycleStats,
+    List<UnclosedCycleDiagnostic> unclosedDiagnostics,
   ) {
+    final colors = Theme.of(context).colorScheme;
     final expenseShares = _expenseStructureCache.get(
       [records, expenses],
       () => StatisticsService.getExpenseStructure(
@@ -465,9 +491,10 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     );
 
     final periodStats = _periodStatsCache.get(
-      [records, expenses, _selectedPeriodGranularity],
+      [records, allRecords, expenses, _selectedPeriodGranularity],
       () => StatisticsService.getPeriodStats(
         records: records,
+        allRecords: allRecords,
         expenses: expenses,
         periodType: _selectedPeriodGranularity,
       ),
@@ -479,7 +506,34 @@ class _StatisticsScreenState extends State<StatisticsScreen>
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
       children: [
         _buildSummaryGrid(summary, totalOtherExpense, isFallbackAverage),
+        if (rangeCycleStats.boundaryCycleCount > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Row(
+              children: [
+                Icon(
+                  AppIcons.info_outline,
+                  size: 13,
+                  color: colors.onSurfaceVariant,
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    '另有 ${rangeCycleStats.boundaryCycleCount} 个完整周期跨越范围边界，'
+                    '未计入本范围平均油耗与里程',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         const SizedBox(height: 8),
+        if (unclosedDiagnostics.isNotEmpty)
+          _buildUnclosedRecordsCard(context, unclosedDiagnostics),
+        if (unclosedDiagnostics.isNotEmpty) const SizedBox(height: 8),
         _buildPeriodStatsCard(context, periodStats),
         const SizedBox(height: 8),
         _buildExpenseStructureCard(context, expenseShares),
@@ -493,6 +547,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
   Widget _buildAdvancedFuelTab(
     BuildContext context,
     List<RefuelRecordModel> records,
+    List<RefuelRecordModel> allRecords,
     double avgConsumption,
     bool isFallbackAverage,
   ) {
@@ -505,9 +560,13 @@ class _StatisticsScreenState extends State<StatisticsScreen>
     final costPerKmTrends = _costPerKmCache.get([
       records,
     ], () => StatisticsService.getCostPerKmTrend(records));
-    final tenThousandStats = _tenThousandCache.get([
-      records,
-    ], () => StatisticsService.getTenThousandKmStats(records));
+    final tenThousandStats = _tenThousandCache.get(
+      [records, allRecords],
+      () => StatisticsService.getTenThousandKmStats(
+        records,
+        allRecords: allRecords,
+      ),
+    );
     final priceTrends = _priceTrendCache.get([
       records,
     ], () => StatisticsService.getPriceTrend(records));
@@ -972,16 +1031,16 @@ class _StatisticsScreenState extends State<StatisticsScreen>
               child: _buildMetricItem(
                 '平均百公里油耗',
                 '${summary.averageConsumption.toStringAsFixed(2)} L',
-                isFallbackAverage ? '所选范围暂无完成周期，展示全历史平均' : '综合百公里实测',
+                isFallbackAverage ? '所选范围暂无完成周期，展示全历史平均' : '范围内完整周期平均',
                 const Color(0xFFFF5A24),
               ),
             ),
             const SizedBox(width: 8),
             Expanded(
               child: _buildMetricItem(
-                '每公里总花费',
-                '¥ ${summary.averageCostPerKm.toStringAsFixed(2)}',
                 '燃油每公里成本',
+                '¥ ${summary.averageCostPerKm.toStringAsFixed(2)}',
+                '仅含完整周期燃油支出',
                 const Color(0xFF1E88E5),
               ),
             ),
@@ -992,9 +1051,9 @@ class _StatisticsScreenState extends State<StatisticsScreen>
           children: [
             Expanded(
               child: _buildMetricItem(
-                '累计加油总花费',
-                '¥ ${summary.totalFuelCost.toStringAsFixed(2)}',
-                '油费总支出',
+                '综合费用',
+                '¥ ${(summary.totalFuelCost + totalOtherExpense).toStringAsFixed(2)}',
+                '燃油支出 + 其他费用',
                 Colors.purple,
               ),
             ),
@@ -1003,7 +1062,7 @@ class _StatisticsScreenState extends State<StatisticsScreen>
               child: _buildMetricItem(
                 '累计总行驶里程',
                 '${summary.totalValidDistance.toStringAsFixed(2)} km',
-                '全车行驶总计',
+                '范围内完整周期里程',
                 Colors.teal,
               ),
             ),
@@ -1058,6 +1117,116 @@ class _StatisticsScreenState extends State<StatisticsScreen>
   }
 
   // 周期报表卡片（彻底防溢出设计：双列自适应弹性伸缩与单行截断保护）
+  /// 未闭合加油记录诊断卡片 (P2-09)。
+  ///
+  /// 列出尚未闭合到完整周期的记录分组：这些记录的加油量与实付金额
+  /// 在交易口径照常统计，但不参与平均油耗与每公里成本。诊断列表让
+  /// "未闭合"可见、可解释，而不是静默消失或显示为伪造的 0。
+  Widget _buildUnclosedRecordsCard(
+    BuildContext context,
+    List<UnclosedCycleDiagnostic> diagnostics,
+  ) {
+    final colors = Theme.of(context).colorScheme;
+    return CustomCard(
+      margin: EdgeInsets.zero,
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                AppIcons.info_outline,
+                color: Colors.orange.shade700,
+                size: 18,
+              ),
+              const SizedBox(width: 6),
+              const Text(
+                '未闭合加油记录',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+              ),
+              const Spacer(),
+              Text(
+                '${diagnostics.length} 组',
+                style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '以下记录的油量尚未归属到完整周期，加油量与金额照常计入交易统计，'
+            '但不参与平均油耗与每公里成本',
+            style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
+          ),
+          const SizedBox(height: 8),
+          ...diagnostics.map((d) {
+            final isOpen = d.kind == UnclosedCycleKind.openCycle;
+            final rangeText = d.startDate == null || d.lastDate == null
+                ? ''
+                : (d.startDate!.year == d.lastDate!.year &&
+                          d.startDate!.month == d.lastDate!.month &&
+                          d.startDate!.day == d.lastDate!.day
+                      ? DateFormatter.formatYmdHm(d.startDate!)
+                      : '${DateFormatter.formatYmd(d.startDate!)} ~ '
+                            '${DateFormatter.formatYmd(d.lastDate!)}');
+            return Container(
+              margin: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: colors.surfaceContainerHighest.withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          isOpen ? '待闭合周期 · $rangeText' : '未归属记录 · $rangeText',
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          '${d.pendingFuel.toStringAsFixed(1)} L / '
+                          '¥${d.pendingCost.toStringAsFixed(2)}',
+                          textAlign: TextAlign.end,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            color: Colors.orange.shade700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    isOpen
+                        ? '共 ${d.records.length} 条记录，待下次加满后自动闭合并计入周期统计'
+                        : '缺少加满基准（账本开头或断点后），共 ${d.records.length} 条记录无法参与周期计算',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
   Widget _buildPeriodStatsCard(
     BuildContext context,
     List<PeriodStatsItem> periodStats,
@@ -1173,31 +1342,43 @@ class _StatisticsScreenState extends State<StatisticsScreen>
                         ],
                       ),
                       const SizedBox(height: 4),
-                      // 第二行：行驶里程与完整耗油量、平均油耗与每公里成本
+                      // 交易口径与完整周期口径明确分开
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(
                             child: Text(
-                              '行驶 ${p.mileage.toStringAsFixed(2)} km  ·  耗油 ${p.fuelAmount.toStringAsFixed(2)} L',
+                              '交易加油量 ${p.fuelAmount.toStringAsFixed(2)} L',
                               style: TextStyle(
                                 fontSize: 11,
                                 color: colors.onSurfaceVariant,
                               ),
-                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           const SizedBox(width: 6),
-                          Text(
-                            p.avgConsumption > 0
-                                ? '均 ${p.avgConsumption.toStringAsFixed(2)}L | ¥${p.costPerKm.toStringAsFixed(2)}/km'
-                                : '¥${p.costPerKm.toStringAsFixed(2)}/km',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: colors.onSurfaceVariant,
+                          Expanded(
+                            child: Text(
+                              p.hasCycleData
+                                  ? '完整周期：${p.mileage.toStringAsFixed(2)} km · 分摊 ${p.avgConsumption > 0 ? "${p.avgConsumption.toStringAsFixed(2)} L" : "--"}'
+                                  : '完整周期：未形成闭合周期',
+                              textAlign: TextAlign.end,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: colors.onSurfaceVariant,
+                              ),
                             ),
                           ),
                         ],
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        p.hasCycleData
+                            ? '平均 ${p.avgConsumption.toStringAsFixed(2)} L/100km · 燃油 ${p.costPerKm.toStringAsFixed(2)} 元/km'
+                            : '平均油耗与燃油每公里成本：数据不足',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: colors.onSurfaceVariant,
+                        ),
                       ),
                     ],
                   ),
@@ -1747,7 +1928,9 @@ class _StatisticsScreenState extends State<StatisticsScreen>
 
                   return PieChartSectionData(
                     color: color,
-                    value: s.percentage,
+                    // P2-18：图形权重使用原始金额，百分比仅用于文字展示，
+                    // 避免保留位数误差改变切片大小
+                    value: s.totalAmount,
                     // 小于 5% 的切片标题互相压盖，占比归入图例展示
                     title: s.percentage >= 5
                         ? '${s.percentage.toStringAsFixed(0)}%'

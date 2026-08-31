@@ -1,4 +1,5 @@
 import '../data/models/refuel_record_model.dart';
+import 'fuel_cycle.dart';
 
 /// 油耗计算结果概览
 class FuelCalculationSummary {
@@ -42,9 +43,10 @@ class FuelCalculator {
   ) {
     if (records.isEmpty) return [];
 
-    // 1. 按实际加油时间排序，里程只作为同一时刻的稳定次序。
-    //    这样补录历史、换表或里程回拨时不会把时间顺序打乱。
+    // 非法日期记录保留在账本中，便于用户导出/修复；仅从计算排序输入中隔离。
+    final invalidRecords = records.where((r) => r.hasInvalidDate).toList();
     final sorted = List<RefuelRecordModel>.from(records)
+      ..removeWhere((r) => r.hasInvalidDate)
       ..sort((a, b) {
         final cmp = a.refuelDate.compareTo(b.refuelDate);
         if (cmp != 0) return cmp;
@@ -58,8 +60,9 @@ class FuelCalculator {
     for (int i = 0; i < sorted.length; i++) {
       final current = sorted[i];
 
-      // 场景 1：用户标记了“漏记了前一次加油”
-      if (current.isForgotPrevious) {
+      // 场景 1：用户标记了“漏记了前一次加油”，或确认“更换里程表/新基准”。
+      // 两者都构成统计断点：此前未闭合的量无法归属，从本条重新起算。
+      if (current.isForgotPrevious || current.isOdometerReset) {
         current.fuelConsumption = null;
         current.costPerKm = null;
         current.distance = null;
@@ -74,6 +77,22 @@ class FuelCalculator {
         } else {
           lastFullIndex = null;
         }
+        continue;
+      }
+
+      // 场景 1.5：检测到表显里程回拨 (P1-06)。
+      // 回拨未经用户确认前，跨越断点的距离与油量不可对账：
+      // 停止跨断点计算，后续记录从新基准开始。
+      final isRollback = i > 0 && current.mileage < sorted[i - 1].mileage;
+      if (isRollback) {
+        current.fuelConsumption = null;
+        current.costPerKm = null;
+        current.distance = null;
+
+        pendingFuelAmount = 0.0;
+        pendingCost = 0.0;
+
+        lastFullIndex = current.isFullTank ? i : null;
         continue;
       }
 
@@ -131,7 +150,7 @@ class FuelCalculator {
       }
     }
 
-    return sorted;
+    return [...sorted, ...invalidRecords];
   }
 
   /// 汇总计算整车的综合油耗、总花费、最佳/最差油耗指标
@@ -142,62 +161,89 @@ class FuelCalculator {
       return const FuelCalculationSummary();
     }
 
-    double totalFuelAmount = 0.0;
-    double totalFuelCost = 0.0;
-    double totalValidFuelForConsumption = 0.0;
-    double totalValidDistance = 0.0;
-    double totalValidCostForCostPerKm = 0.0;
+    // 交易口径总量保留全部有效账本记录（含未闭合尾笔）。
+    var totalFuelAmount = 0.0;
+    var totalFuelCost = 0.0;
+    for (final record in computedRecords) {
+      if (record.hasInvalidDate) continue;
+      totalFuelAmount += record.fuelAmount;
+      totalFuelCost += record.totalPrice;
+    }
 
+    // 以不可变完整周期作为汇总源，避免从已四舍五入的记录派生字段反推。
+    final cycles = FuelCycleBuilder.build(
+      computedRecords,
+    ).where((cycle) => cycle.isReliable).toList();
+    double totalValidDistance = 0.0;
+    double totalValidFuelForConsumption = 0.0;
+    double totalValidCost = 0.0;
+    double totalValidCostDistance = 0.0;
     double? bestConsumption;
     double? worstConsumption;
-    int validCount = 0;
+    for (final cycle in cycles) {
+      totalValidDistance += cycle.distance;
+      totalValidFuelForConsumption += cycle.fuelAmount;
+      final consumption = cycle.consumption!;
+      if (bestConsumption == null || consumption < bestConsumption) {
+        bestConsumption = consumption;
+      }
+      if (worstConsumption == null || consumption > worstConsumption) {
+        worstConsumption = consumption;
+      }
+    }
 
-    for (final r in computedRecords) {
-      totalFuelAmount += r.fuelAmount;
-      totalFuelCost += r.totalPrice;
-
-      if (r.fuelConsumption != null &&
-          r.fuelConsumption! > 0 &&
-          r.distance != null &&
-          r.distance! > 0) {
-        validCount++;
-        // 统计极值
-        final val = r.fuelConsumption!;
-        if (bestConsumption == null || val < bestConsumption) {
-          bestConsumption = val;
-        }
-        if (worstConsumption == null || val > worstConsumption) {
-          worstConsumption = val;
-        }
-
-        // 累计有效区间的加权油量与里程
-        totalValidDistance += r.distance!;
-        // 还原该周期消耗升数 = (百公里油耗 * 里程) / 100
-        totalValidFuelForConsumption += (val * r.distance!) / 100.0;
-        if (r.costPerKm != null) {
-          totalValidCostForCostPerKm += r.costPerKm! * r.distance!;
+    // 成本使用完整周期原始费用；正常计算时周期结束记录有成本投影。
+    // 旧备份若缺少结束投影，则退回该周期中可用的记录级成本，但只按
+    // 有效记录距离计入，绝不把缺失值当作 0。
+    for (final cycle in cycles) {
+      final members = cycle.memberIndices
+          .where((index) => index >= 0 && index < computedRecords.length)
+          .map((index) => computedRecords[index])
+          .where(
+            (record) =>
+                !record.hasInvalidDate &&
+                record.costPerKm != null &&
+                record.costPerKm! > 0 &&
+                record.distance != null &&
+                record.distance! > 0,
+          )
+          .toList();
+      final endHasCost = members.any(
+        (record) =>
+            record.refuelDate == cycle.endDate &&
+            record.mileage == cycle.endMileage,
+      );
+      if (endHasCost) {
+        totalValidCost += cycle.cost;
+        totalValidCostDistance += cycle.distance;
+      } else if (members.isNotEmpty) {
+        for (final record in members) {
+          totalValidCost += record.costPerKm! * record.distance!;
+          totalValidCostDistance += record.distance!;
         }
       }
     }
 
-    double avgConsumption = 0.0;
-    double avgCostPerKm = 0.0;
-
-    if (totalValidDistance > 0) {
-      avgConsumption =
-          (totalValidFuelForConsumption / totalValidDistance) * 100.0;
-      avgCostPerKm = totalValidCostForCostPerKm / totalValidDistance;
-    }
+    final avgConsumption = totalValidDistance > 0
+        ? totalValidFuelForConsumption / totalValidDistance * 100.0
+        : 0.0;
+    final avgCostPerKm = totalValidCostDistance > 0
+        ? totalValidCost / totalValidCostDistance
+        : 0.0;
 
     return FuelCalculationSummary(
       averageConsumption: double.parse(avgConsumption.toStringAsFixed(2)),
       averageCostPerKm: double.parse(avgCostPerKm.toStringAsFixed(2)),
-      bestConsumption: bestConsumption ?? 0.0,
-      worstConsumption: worstConsumption ?? 0.0,
+      bestConsumption: bestConsumption == null
+          ? 0.0
+          : double.parse(bestConsumption.toStringAsFixed(2)),
+      worstConsumption: worstConsumption == null
+          ? 0.0
+          : double.parse(worstConsumption.toStringAsFixed(2)),
       totalFuelAmount: double.parse(totalFuelAmount.toStringAsFixed(2)),
       totalFuelCost: double.parse(totalFuelCost.toStringAsFixed(2)),
       totalValidDistance: double.parse(totalValidDistance.toStringAsFixed(1)),
-      validCalculatedCount: validCount,
+      validCalculatedCount: cycles.length,
     );
   }
 }

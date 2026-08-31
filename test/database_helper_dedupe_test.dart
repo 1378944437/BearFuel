@@ -22,7 +22,8 @@ void main() {
     String vid = vehicleId,
   }) {
     return RefuelRecordModel(
-      id: 'r_${date.toIso8601String()}_$mileage',
+      // 主键必须含车辆，否则跨车同时刻同里程的用例会因主键冲突而非去重失败
+      id: 'r_${vid}_${date.toIso8601String()}_$mileage',
       vehicleId: vid,
       refuelDate: date,
       mileage: mileage,
@@ -79,6 +80,91 @@ void main() {
     expect(third.skippedDuplicates, equals(2));
 
     final rows = await db.getRefuelRecords(vehicleId);
+    expect(rows.length, equals(2));
+  });
+
+  test('跨车辆同时刻同里程的记录不互相判重 (P1-07)', () async {
+    const otherVehicleId = 'veh_dedupe_cross';
+    await db.insertVehicle(
+      VehicleModel(id: otherVehicleId, name: '跨车查重测试车', isDefault: false),
+    );
+
+    final sameMoment = DateTime(2026, 6, 20, 10, 0);
+    // 两辆车在同一分钟、相同表显里程各加一次油，是现实存在的场景
+    final stats = await db.batchInsertRefuelRecords([
+      record(sameMoment, 20000, 400.0),
+      record(sameMoment, 20000, 380.0, vid: otherVehicleId),
+    ]);
+
+    expect(stats.inserted, equals(2), reason: '去重指纹必须包含车辆，否则第二辆车的记录会被静默丢弃');
+    expect(stats.skippedDuplicates, equals(0));
+    expect(stats.byVehicle[vehicleId]?.inserted, equals(1));
+    expect(stats.byVehicle[otherVehicleId]?.inserted, equals(1));
+
+    final rowsA = await db.getRefuelRecords(vehicleId);
+    final rowsB = await db.getRefuelRecords(otherVehicleId);
+    expect(rowsA.any((r) => r.mileage == 20000), isTrue);
+    expect(rowsB.any((r) => r.mileage == 20000), isTrue);
+  });
+
+  test('重复跳过会按原因归类并计入导入报告', () async {
+    final existing = record(DateTime(2026, 7, 1, 9, 0), 30000, 500.0);
+    await db.batchInsertRefuelRecords([existing]);
+
+    final fresh = record(DateTime(2026, 7, 5, 9, 0), 30500, 300.0);
+    final stats = await db.batchInsertRefuelRecords([
+      existing, // 与库内已有记录重复
+      fresh, // 正常新增
+      fresh, // 与本批次前序记录重复
+    ]);
+
+    expect(stats.inserted, equals(1));
+    expect(stats.skippedDuplicates, equals(2));
+    expect(stats.skipReasons[ImportSkipReason.duplicateInDb], equals(1));
+    expect(stats.skipReasons[ImportSkipReason.duplicateInBatch], equals(1));
+  });
+
+  test('覆盖导入拒绝 vehicleId 不匹配的记录且保留原数据 (P1-08)', () async {
+    const targetId = 'veh_overwrite_guard';
+    await db.insertVehicle(
+      VehicleModel(id: targetId, name: '覆盖导入守卫车', isDefault: false),
+    );
+    await db.insertRefuelRecord(
+      record(DateTime(2026, 8, 1, 8, 0), 40000, 320.0, vid: targetId),
+    );
+
+    await expectLater(
+      db.replaceVehicleRefuelRecords(targetId, [
+        record(DateTime(2026, 8, 10, 8, 0), 40500, 300.0, vid: targetId),
+        // 携带了错误归属的记录
+        record(DateTime(2026, 8, 11, 8, 0), 40600, 280.0, vid: 'veh_other'),
+      ]),
+      throwsA(isA<ArgumentError>()),
+    );
+
+    final rows = await db.getRefuelRecords(targetId);
+    expect(
+      rows.single.mileage,
+      equals(40000),
+      reason: '校验失败必须整事务拒绝，不能先删后插导致原数据丢失',
+    );
+  });
+
+  test('覆盖导入归属一致时正常替换', () async {
+    const targetId = 'veh_overwrite_ok';
+    await db.insertVehicle(
+      VehicleModel(id: targetId, name: '覆盖导入正常车', isDefault: false),
+    );
+    await db.insertRefuelRecord(
+      record(DateTime(2026, 8, 1, 8, 0), 50000, 320.0, vid: targetId),
+    );
+
+    await db.replaceVehicleRefuelRecords(targetId, [
+      record(DateTime(2026, 8, 10, 8, 0), 50500, 300.0, vid: targetId),
+      record(DateTime(2026, 8, 20, 8, 0), 51000, 310.0, vid: targetId),
+    ]);
+
+    final rows = await db.getRefuelRecords(targetId);
     expect(rows.length, equals(2));
   });
 

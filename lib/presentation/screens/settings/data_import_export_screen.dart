@@ -187,7 +187,44 @@ class _DataImportExportScreenState extends State<DataImportExportScreen>
     );
 
     if (confirm == true && mounted) {
-      final success = await DatabaseHelper().restoreFullBackupData(backupMap);
+      var result = await DatabaseHelper().restoreFullBackupData(backupMap);
+
+      // 金额关系矛盾时，先向用户展示具体记录，由用户决定是否按待核对放行。
+      if (!result.success && result.consistency.issues.isNotEmpty && mounted) {
+        final allow = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('备份金额关系不自洽'),
+            content: SingleChildScrollView(
+              child: Text(
+                '${result.message}\n\n'
+                '可以选择仅导入原始记录并标记为待核对，本应用不会自动修正金额。',
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消恢复'),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFFF5A24),
+                ),
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('仍要恢复并标记待核对'),
+              ),
+            ],
+          ),
+        );
+        if (allow == true && mounted) {
+          result = await DatabaseHelper().restoreFullBackupData(
+            backupMap,
+            allowAmountInconsistency: true,
+          );
+        }
+      }
+
+      final success = result.success;
       if (success && mounted) {
         final vehicleProv = context.read<VehicleProvider>();
         await vehicleProv.loadVehicles();
@@ -462,6 +499,8 @@ class _DataImportExportScreenState extends State<DataImportExportScreen>
                 const SizedBox(height: 8),
                 Text(
                   '已选文件: $_selectedFileName (${(_selectedFileSize ?? 0) ~/ 1024} KB)',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 12,
                     color: Colors.green,
@@ -555,6 +594,48 @@ class _DataImportExportScreenState extends State<DataImportExportScreen>
                     style: TextStyle(
                       fontSize: 12,
                       color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+                if (_previewResult!.warnings.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '需要核对的字段（${_previewResult!.warnings.length} 项）',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.orange[800],
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Container(
+                    constraints: const BoxConstraints(maxHeight: 180),
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          for (final warning in _previewResult!.warnings)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              child: Text(
+                                '· ${warning.description}',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  height: 1.35,
+                                  color: colors.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                 ],

@@ -65,14 +65,8 @@ void main() {
         provincePageHtml,
       );
       expect(byFullName, isNotNull);
-      expect(
-        XxyhFuelPriceService.normalizeRegionName('新疆维吾尔自治区'),
-        '新疆',
-      );
-      expect(
-        XxyhFuelPriceService.normalizeRegionName('北京市'),
-        '北京',
-      );
+      expect(XxyhFuelPriceService.normalizeRegionName('新疆维吾尔自治区'), '新疆');
+      expect(XxyhFuelPriceService.normalizeRegionName('北京市'), '北京');
     });
 
     test('省份不匹配或结构缺失时返回 null', () {
